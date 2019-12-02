@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/klogr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha2"
+	bmh "github.com/metal3-io/baremetal-operator/pkg/apis/metal3/v1alpha1"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/cmd"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
@@ -27,5 +28,6 @@ import (
 func main() {
 	log.SetLogger(klogr.New())
 	clusterv1.AddToScheme(scheme.Scheme)
+	bmh.SchemeBuilder.AddToScheme(scheme.Scheme)
 	cmd.Execute()
 }

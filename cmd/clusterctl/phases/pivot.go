@@ -29,6 +29,8 @@ import (
 	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/klog"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha2"
+	bmh "github.com/metal3-io/baremetal-operator/pkg/apis/metal3/v1alpha1"
+
 )
 
 type sourceClient interface {
@@ -40,10 +42,12 @@ type sourceClient interface {
 	ForceDeleteMachineSet(namespace, name string) error
 	ForceDeleteUnstructuredObject(*unstructured.Unstructured) error
 	GetClusterSecrets(*clusterv1.Cluster) ([]*corev1.Secret, error)
+	GetBMCSecrets(*bmh.BareMetalHost) ([]*corev1.Secret, error)
 	GetClusters(string) ([]*clusterv1.Cluster, error)
 	GetMachineDeployments(string) ([]*clusterv1.MachineDeployment, error)
 	GetMachineDeploymentsForCluster(*clusterv1.Cluster) ([]*clusterv1.MachineDeployment, error)
 	GetMachines(namespace string) ([]*clusterv1.Machine, error)
+	GetBareMetalHosts(namespace string) ([]*bmh.BareMetalHost, error)
 	GetMachineSets(namespace string) ([]*clusterv1.MachineSet, error)
 	GetMachineSetsForCluster(*clusterv1.Cluster) ([]*clusterv1.MachineSet, error)
 	GetMachineSetsForMachineDeployment(*clusterv1.MachineDeployment) ([]*clusterv1.MachineSet, error)
@@ -57,6 +61,7 @@ type sourceClient interface {
 type targetClient interface {
 	Apply(string) error
 	CreateSecret(*corev1.Secret) error
+	CreateBareMetalHosts(*bmh.BareMetalHost, string) error
 	CreateClusterObject(*clusterv1.Cluster) error
 	CreateMachineDeployments([]*clusterv1.MachineDeployment, string) error
 	CreateMachines([]*clusterv1.Machine, string) error
@@ -68,6 +73,8 @@ type targetClient interface {
 	GetMachineSet(string, string) (*clusterv1.MachineSet, error)
 	WaitForClusterV1alpha2Ready() error
 	SetClusterOwnerRef(runtime.Object, *clusterv1.Cluster) error
+	GetBareMetalHosts(namespace string) ([]*bmh.BareMetalHost, error)
+	PatchBareMetalHost(sourceHost *bmh.BareMetalHost, targetHost *bmh.BareMetalHost) error
 }
 
 // Pivot deploys the provided provider components to a target cluster and then migrates
@@ -150,11 +157,39 @@ func pivot(from sourceClient, to targetClient, providerComponents string) error 
 		return err
 	}
 
-	klog.V(4).Infof("Deleting provider components from source cluster")
-	if err := from.Delete(providerComponents); err != nil {
-		klog.Warningf("Could not delete the provider components from the source cluster: %v", err)
+	klog.V(4).Infof("Retrieving list of BareMetalHosts to move")
+	bmHosts, err := from.GetBareMetalHosts("")
+	if err != nil {
+		return err
+	}
+	if err := moveBareMetalHosts(from, to, bmHosts); err != nil {
+		return err
 	}
 
+	klog.V(4).Infof("Patching BareMetalHosts")
+	sourceHosts, _ := from.GetBareMetalHosts("")
+	targetHosts, _ := to.GetBareMetalHosts("")
+	if err := PatchBareMetalHosts(from, to, sourceHosts, targetHosts); err != nil {
+		return err
+	}
+
+	// klog.V(4).Infof("Deleting provider components from source cluster")
+	// if err := from.Delete(providerComponents); err != nil {
+	// 	klog.Warningf("Could not delete the provider components from the source cluster: %v", err)
+	// }
+
+	return nil
+}
+
+func PatchBareMetalHosts(from sourceClient, to targetClient, sourceHosts []*bmh.BareMetalHost, targetHosts []*bmh.BareMetalHost) error {
+	for _, sourcehost:= range sourceHosts{
+		for _, targethost:= range targetHosts {
+			if targethost.Name == sourcehost.Name {
+				to.PatchBareMetalHost(sourcehost,targethost)
+				break
+			}
+		}
+	}
 	return nil
 }
 
@@ -397,6 +432,90 @@ func moveMachines(from sourceClient, to targetClient, machines []*clusterv1.Mach
 			return errors.Wrapf(err, "failed to move Machine %s:%s", m.Namespace, m.Name)
 		}
 	}
+	return nil
+}
+
+func moveBareMetalHosts(from sourceClient, to targetClient, bmhosts []*bmh.BareMetalHost) error {
+	bmhostNames := make([]string, 0, len(bmhosts))
+	for _, bmhost := range bmhosts {
+		if bmhost.DeletionTimestamp != nil {
+			klog.V(4).Infof("Skipping to move deleted baremetalHost: %q", bmhost.Name)
+			continue
+		}
+		bmhostNames = append(bmhostNames, bmhost.Name)
+	}
+	klog.V(4).Infof("Preparing to move BareMetalHosts: %v", bmhostNames)
+
+	for _, bmhost := range bmhosts {
+		if !bmhost.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if err := moveBareMetalHost(from, to, bmhost); err != nil {
+			return errors.Wrapf(err, "failed to move BareMetalHost %s:%s", bmhost.Namespace, bmhost.Name)
+		}
+	}
+	return nil
+}
+
+func moveBMCSecrets(from sourceClient, to targetClient, bmhost *bmh.BareMetalHost) error {
+	klog.V(4).Infof("Moving Secrets for BareMetalHost %s/%s", bmhost.Namespace, bmhost.Name)
+	secrets, err := from.GetBMCSecrets(bmhost)
+	if err != nil {
+		return err
+	}
+
+	for _, secret := range secrets {
+		klog.V(4).Infof("BMC Secret %s/%s being moved", secret.Namespace, secret.Name)
+		if err := moveBMCSecret(from, to, secret, bmhost); err != nil {
+			return errors.Wrapf(err, "failed to move Secret %s/%s", secret.Namespace, secret.Name)
+		}
+	}
+	return nil
+}
+
+func moveBMCSecret(from sourceClient, to targetClient, secret *corev1.Secret, bmhost *bmh.BareMetalHost) error {
+	klog.V(4).Infof("Moving secret %s/%s", secret.Namespace, secret.Name)
+
+	// New objects cannot have a specified resource version. Clear it out.
+	secret.SetResourceVersion("")
+	// // Set the cluster owner ref based on target cluster's Cluster resource
+	secret.SetOwnerReferences([]metav1.OwnerReference{
+		{
+			APIVersion: "metal3.io/v1alpha1",
+			Kind:       "BareMetalHost",
+			Name:       bmhost.Name,
+			UID:        bmhost.UID,
+		},
+	})
+
+	if err := to.CreateSecret(secret); err != nil {
+		return errors.Wrapf(err, "error copying Secret %s/%s to target cluster", secret.Namespace, secret.Name)
+	}
+	
+	klog.V(4).Infof("Successfully moved Secret %s/%s", secret.Namespace, secret.Name)
+	return nil
+}
+
+func moveBareMetalHost(from sourceClient, to targetClient, bmhost *bmh.BareMetalHost) error {
+	klog.V(4).Infof("Moving BareMetalHost %s/%s", bmhost.Namespace, bmhost.Name)
+  
+	targetObject := bmhost.DeepCopy()
+	klog.V(4).Infof("DeepCopy Done ")
+
+	targetObject.SetResourceVersion("")
+
+	if err := to.CreateBareMetalHosts(targetObject, targetObject.Namespace); err != nil {
+		return errors.Wrapf(err, "error copying BareMetalHost %s/%s to target cluster", targetObject.Namespace, targetObject.Name)
+	}
+
+	if targetObject.Spec.BMC.CredentialsName != "" {
+		klog.V(4).Infof("Found Secret %s", targetObject.Spec.BMC.CredentialsName)
+		if err := moveBMCSecrets(from, to, targetObject); err != nil {
+			return errors.Wrapf(err, "failed to move Secrets for BareMetalHost %s/%s to target cluster", targetObject.Namespace, targetObject.Name)
+		}
+	}
+
+	klog.V(4).Infof("Successfully moved BareMetalHost %s/%s", targetObject.Namespace, targetObject.Name)
 	return nil
 }
 

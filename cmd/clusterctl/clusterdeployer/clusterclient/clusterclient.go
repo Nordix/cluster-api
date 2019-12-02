@@ -40,6 +40,7 @@ import (
 	tcmd "k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha2"
+	bmh "github.com/metal3-io/baremetal-operator/pkg/apis/metal3/v1alpha1"
 	"sigs.k8s.io/cluster-api/cmd/clusterctl/clientcmd"
 	"sigs.k8s.io/cluster-api/util"
 	kcfg "sigs.k8s.io/cluster-api/util/kubeconfig"
@@ -74,6 +75,7 @@ type Client interface {
 	CreateMachineDeployments([]*clusterv1.MachineDeployment, string) error
 	CreateMachineSets([]*clusterv1.MachineSet, string) error
 	CreateMachines([]*clusterv1.Machine, string) error
+	CreateBareMetalHosts(*bmh.BareMetalHost, string) error
 	CreateUnstructuredObject(*unstructured.Unstructured) error
 	Delete(string) error
 	DeleteClusters(string) error
@@ -90,6 +92,7 @@ type Client interface {
 	EnsureNamespace(string) error
 	GetKubeconfigFromSecret(namespace, clusterName string) (string, error)
 	GetClusterSecrets(*clusterv1.Cluster) ([]*corev1.Secret, error)
+	GetBMCSecrets(*bmh.BareMetalHost) ([]*corev1.Secret, error)
 	GetClusters(string) ([]*clusterv1.Cluster, error)
 	GetCluster(string, string) (*clusterv1.Cluster, error)
 	GetContextNamespace() string
@@ -101,6 +104,7 @@ type Client interface {
 	GetMachineSetsForCluster(*clusterv1.Cluster) ([]*clusterv1.MachineSet, error)
 	GetMachineSetsForMachineDeployment(*clusterv1.MachineDeployment) ([]*clusterv1.MachineSet, error)
 	GetMachines(namespace string) ([]*clusterv1.Machine, error)
+	GetBareMetalHosts(namespace string) ([]*bmh.BareMetalHost, error)
 	GetMachinesForCluster(*clusterv1.Cluster) ([]*clusterv1.Machine, error)
 	GetMachinesForMachineSet(*clusterv1.MachineSet) ([]*clusterv1.Machine, error)
 	GetUnstructuredObject(*unstructured.Unstructured) error
@@ -108,6 +112,7 @@ type Client interface {
 	WaitForClusterV1alpha2Ready() error
 	WaitForResourceStatuses() error
 	SetClusterOwnerRef(runtime.Object, *clusterv1.Cluster) error
+	PatchBareMetalHost(*bmh.BareMetalHost, *bmh.BareMetalHost) error
 }
 
 type client struct {
@@ -115,6 +120,7 @@ type client struct {
 	kubeconfigFile  string
 	configOverrides tcmd.ConfigOverrides
 	closeFn         func() error
+	statusPatch     ctrlclient.Patch
 }
 
 // New creates and returns a Client, the kubeconfig argument is expected to be the string representation
@@ -443,6 +449,17 @@ func (c *client) GetMachines(namespace string) (machines []*clusterv1.Machine, _
 	return
 }
 
+func (c *client) GetBareMetalHosts(namespace string) (bmHosts []*bmh.BareMetalHost, _ error) {
+	bmHostlist := &bmh.BareMetalHostList{}
+	if err := c.clientSet.List(ctx, bmHostlist, ctrlclient.InNamespace(namespace)); err != nil {
+		return nil, errors.Wrapf(err, "error listing BareMetalHosts in namespace %q", namespace)
+	}
+	for i := 0; i < len(bmHostlist.Items); i++ {
+		bmHosts = append(bmHosts, &bmHostlist.Items[i])
+	}
+	return
+}
+
 func (c *client) GetMachinesForCluster(cluster *clusterv1.Cluster) ([]*clusterv1.Machine, error) {
 	selectors := []ctrlclient.ListOption{
 		ctrlclient.MatchingLabels{
@@ -532,6 +549,56 @@ func (c *client) CreateMachines(machines []*clusterv1.Machine, namespace string)
 			}
 		}(machine)
 	}
+	wg.Wait()
+	return gerr
+}
+
+func (c *client) CreateBareMetalHosts(bmHost *bmh.BareMetalHost, namespace string) error {
+	var (
+		wg      sync.WaitGroup
+		errOnce sync.Once
+		gerr    error
+	)
+		wg.Add(1)
+		
+		go func(bmHost *bmh.BareMetalHost) {
+			defer wg.Done()
+			if err := c.clientSet.Create(ctx, bmHost.DeepCopyObject()); err != nil {
+				return
+			}
+			
+			if err := waitForBMHReady(c.clientSet, bmHost); err != nil {
+				errOnce.Do(func() { gerr = err })
+			}
+			
+		}(bmHost)
+	wg.Wait()
+	return gerr
+}
+
+func (c *client) PatchBareMetalHost(sourceHost *bmh.BareMetalHost, targetHost *bmh.BareMetalHost) error {
+	var (
+		wg      sync.WaitGroup
+		errOnce sync.Once
+		gerr    error
+	)
+		
+	var errs []error
+	wg.Add(1)
+		
+	go func(targetHost *bmh.BareMetalHost) {
+		defer wg.Done()
+		targetHost.Status = sourceHost.Status	
+		if err := c.clientSet.Status().Update(ctx, targetHost.DeepCopyObject()) ; err != nil {
+			errs = append(errs, err)
+			klog.V(4).Info("Error Patching bmh status %v", err)
+		} else {
+					klog.V(4).Info("Successfully Patched")
+		}
+		
+		errOnce.Do(func() { gerr = errors.New("Error Occured") })
+			
+	}(targetHost)
 	wg.Wait()
 	return gerr
 }
@@ -706,10 +773,30 @@ func (c *client) GetClusterSecrets(cluster *clusterv1.Cluster) ([]*corev1.Secret
 	return res, nil
 }
 
+func (c *client) GetBMCSecrets(bmhost *bmh.BareMetalHost) ([]*corev1.Secret, error) {
+	list := &corev1.SecretList{}
+	if err := c.clientSet.List(ctx, list, ctrlclient.InNamespace(bmhost.Namespace)); err != nil {
+		return nil, errors.Wrapf(err, "error listing Secrets for BareMetalHost %s/%s", bmhost.Namespace, bmhost.Name)
+	}
+
+	res := []*corev1.Secret{}
+	for i, secret := range list.Items {
+		klog.V(4).Info("Secret Name ", secret.Name, bmhost.Name )
+		if strings.HasPrefix(secret.Name, bmhost.Name) {
+			res = append(res, &list.Items[i])
+			break
+		}
+	}
+	return res, nil
+}
+
 func (c *client) CreateSecret(s *corev1.Secret) error {
+	klog.V(4).Info("Planning to create Secret ", s.Name)
 	if err := c.clientSet.Create(context.Background(), s); err != nil {
+		klog.V(4).Info("Tried and failed to create Secret ", err)
 		return errors.Wrapf(err, "error creating Secret %s/%s", s.Namespace, s.Name)
 	}
+	klog.V(4).Info("Succeeded to create Secret ", s.Name)
 	return nil
 }
 
@@ -882,6 +969,28 @@ func waitForMachineReady(cs ctrlclient.Client, machine *clusterv1.Machine) error
 
 		// Return true if the Machine has a reference to a Node.
 		return machine.Status.NodeRef != nil, nil
+	})
+
+	return err
+}
+
+func waitForBMHReady(cs ctrlclient.Client, bmhost *bmh.BareMetalHost) error {
+	timeout := timeoutMachineReady
+	klog.V(4).Info("Setting wait for BMH timeout value to ", timeout)
+
+	err := util.PollImmediate(retryIntervalResourceReady, timeout, func() (bool, error) {
+		klog.V(2).Infof("Waiting for BMH %v to become ready...", bmhost.Name)
+		if err := cs.Get(ctx, ctrlclient.ObjectKey{Name: bmhost.Name, Namespace: bmhost.Namespace}, bmhost); err != nil {
+			return false, nil
+		}
+
+		// Return true if the Machine has a reference to a Node.
+		goodState := false
+		//bmh.ProvisioningState.StateReady
+		if bmhost.Status.OperationalStatus == "OK" {
+			goodState = true
+		}
+		return goodState, nil
 	})
 
 	return err
