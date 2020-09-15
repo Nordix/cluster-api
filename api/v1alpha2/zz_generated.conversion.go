@@ -628,6 +628,7 @@ func autoConvert_v1alpha3_MachineDeploymentSpec_To_v1alpha2_MachineDeploymentSpe
 	out.RevisionHistoryLimit = (*int32)(unsafe.Pointer(in.RevisionHistoryLimit))
 	out.Paused = in.Paused
 	out.ProgressDeadlineSeconds = (*int32)(unsafe.Pointer(in.ProgressDeadlineSeconds))
+	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
 	return nil
 }
 
@@ -891,6 +892,7 @@ func autoConvert_v1alpha3_MachineSpec_To_v1alpha2_MachineSpec(in *v1alpha3.Machi
 	out.Version = (*string)(unsafe.Pointer(in.Version))
 	out.ProviderID = (*string)(unsafe.Pointer(in.ProviderID))
 	// WARNING: in.FailureDomain requires manual conversion: does not exist in peer-type
+	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
 	return nil
 }
 

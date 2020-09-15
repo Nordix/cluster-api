@@ -90,6 +90,9 @@ type MachineDeploymentSpec struct {
 	// reason will be surfaced in the deployment status. Note that progress will
 	// not be estimated during the time a deployment is paused. Defaults to 600s.
 	ProgressDeadlineSeconds *int32 `json:"progressDeadlineSeconds,omitempty"`
+
+	// Test nodeDrainTimeout parameter
+	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
 }
 
 // ANCHOR_END: MachineDeploymentSpec

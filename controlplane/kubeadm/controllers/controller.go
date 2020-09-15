@@ -120,6 +120,8 @@ func (r *KubeadmControlPlaneReconciler) Reconcile(req ctrl.Request) (res ctrl.Re
 		return ctrl.Result{Requeue: true}, nil
 	}
 
+	// Fetch the timeout for node draining process
+	// kcp.Spec.InfrastructureTemplate
 	// Fetch the Cluster.
 	cluster, err := util.GetOwnerCluster(ctx, r.Client, kcp.ObjectMeta)
 	if err != nil {
@@ -294,6 +296,11 @@ func (r *KubeadmControlPlaneReconciler) reconcile(ctx context.Context, cluster *
 		logger.Info("Not all control plane machines are owned by this KubeadmControlPlane, refusing to operate in mixed management mode")
 		return ctrl.Result{}, nil
 	}
+	// for i := range ownedMachines {
+	// 	machine := ownedMachines[i]
+	// 	machine.Spec.NodeDrainTimeout = kcp.Spec.NodeDrainTimeout
+	// 	logger.Info("DEBUG", "machine", machine)
+	// }
 
 	controlPlane, err := internal.NewControlPlane(ctx, r.Client, cluster, kcp, ownedMachines)
 	if err != nil {

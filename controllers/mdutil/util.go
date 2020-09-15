@@ -388,7 +388,12 @@ func getMachineSetFraction(ms clusterv1.MachineSet, d clusterv1.MachineDeploymen
 
 // EqualMachineTemplate returns true if two given machineTemplateSpec are equal,
 // ignoring the diff in value of Labels["machine-template-hash"], and the version from external references.
-func EqualMachineTemplate(template1, template2 *clusterv1.MachineTemplateSpec) bool {
+func EqualMachineTemplate(template1, template2 *clusterv1.MachineTemplateSpec, logger logr.Logger) bool {
+	if logger != nil {
+		logger.Info("DEBUG", "come to function")
+		logger.Info("DEBUG", "new one: ", template1)
+		logger.Info("DEBUG", "machineDeployment one ", template2)
+	}
 	t1Copy := template1.DeepCopy()
 	t2Copy := template2.DeepCopy()
 
@@ -410,6 +415,10 @@ func EqualMachineTemplate(template1, template2 *clusterv1.MachineTemplateSpec) b
 		t2Copy.Spec.Bootstrap.ConfigRef.APIVersion = t2Copy.Spec.Bootstrap.ConfigRef.GroupVersionKind().Group
 	}
 
+	if logger != nil {
+		logger.Info("DEBUG", "come to the end equal function")
+	}
+
 	return apiequality.Semantic.DeepEqual(t1Copy, t2Copy)
 }
 
@@ -417,7 +426,7 @@ func EqualMachineTemplate(template1, template2 *clusterv1.MachineTemplateSpec) b
 func FindNewMachineSet(deployment *clusterv1.MachineDeployment, msList []*clusterv1.MachineSet) *clusterv1.MachineSet {
 	sort.Sort(MachineSetsByCreationTimestamp(msList))
 	for i := range msList {
-		if EqualMachineTemplate(&msList[i].Spec.Template, &deployment.Spec.Template) {
+		if EqualMachineTemplate(&msList[i].Spec.Template, &deployment.Spec.Template, nil) {
 			// In rare cases, such as after cluster upgrades, Deployment may end up with
 			// having more than one new MachineSets that have the same template,
 			// see https://github.com/kubernetes/kubernetes/issues/40415

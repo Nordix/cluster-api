@@ -89,6 +89,9 @@ type MachineSpec struct {
 	// Must match a key in the FailureDomains map stored on the cluster object.
 	// +optional
 	FailureDomain *string `json:"failureDomain,omitempty"`
+
+	// Test parameter for timeout for node draining
+	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
 }
 
 // ANCHOR_END: MachineSpec

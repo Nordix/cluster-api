@@ -595,6 +595,10 @@ spec:
                   as soon as it is ready)
                 format: int32
                 type: integer
+              nodeDrainTimeout:
+                description: Test nodeDrainTimeout parameter
+                format: int64
+                type: integer
               paused:
                 description: Indicates that the deployment is paused.
                 type: boolean
@@ -926,6 +930,10 @@ spec:
                             description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                             type: string
                         type: object
+                      nodeDrainTimeout:
+                        description: Test parameter for timeout for node draining
+                        format: int64
+                        type: integer
                       providerID:
                         description: ProviderID is the identification ID of the machine
                           provided by the provider. This field must match the provider

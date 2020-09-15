@@ -66,6 +66,11 @@ type KubeadmControlPlaneSpec struct {
 	// KubeadmControlPlane
 	// +optional
 	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
+
+	// Test configurable timeout parameter
+	// Test with Timeout int...but it should be something else
+
+	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
 }
 
 // KubeadmControlPlaneStatus defines the observed state of KubeadmControlPlane.

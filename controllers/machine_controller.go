@@ -310,7 +310,7 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 				return ctrl.Result{}, errors.Wrap(err, "failed to patch Machine")
 			}
 
-			if err := r.drainNode(ctx, cluster, m.Status.NodeRef.Name, m.Name); err != nil {
+			if err := r.drainNode(ctx, cluster, m.Status.NodeRef.Name, m.Name, m.Spec.NodeDrainTimeout); err != nil {
 				conditions.MarkFalse(m, clusterv1.DrainingSucceededCondition, clusterv1.DrainingFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
 				r.recorder.Eventf(m, corev1.EventTypeWarning, "FailedDrainNode", "error draining Machine's node %q: %v", m.Status.NodeRef.Name, err)
 				return ctrl.Result{}, err
@@ -395,8 +395,10 @@ func (r *MachineReconciler) isDeleteNodeAllowed(ctx context.Context, cluster *cl
 	}
 }
 
-func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cluster, nodeName string, machineName string) error {
+//DEBUG
+func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cluster, nodeName string, machineName string, nodeDrainTimeout int64) error {
 	logger := r.Log.WithValues("machine", machineName, "node", nodeName, "cluster", cluster.Name, "namespace", cluster.Namespace)
+	//DEBUG
 
 	restConfig, err := remote.RESTConfig(ctx, r.Client, util.ObjectKey(cluster))
 	if err != nil {
@@ -418,7 +420,6 @@ func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cl
 		}
 		return errors.Errorf("unable to get node %q: %v", nodeName, err)
 	}
-
 	drainer := &kubedrain.Helper{
 		Client:              kubeClient,
 		Force:               true,
@@ -427,7 +428,9 @@ func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cl
 		GracePeriodSeconds:  -1,
 		// If a pod is not evicted in 20 seconds, retry the eviction next time the
 		// machine gets reconciled again (to allow other machines to be reconciled).
-		Timeout: 20 * time.Second,
+		// Timeout: 20 * time.Second,
+		//DEBUG
+		Timeout: time.Duration(nodeDrainTimeout) * time.Second,
 		OnPodDeletedOrEvicted: func(pod *corev1.Pod, usingEviction bool) {
 			verbStr := "Deleted"
 			if usingEviction {
@@ -440,6 +443,7 @@ func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cl
 		ErrOut: writer{klog.Error},
 		DryRun: false,
 	}
+	logger.Info("Drain timeout: ", "nodetimeout: ", drainer.Timeout)
 
 	if noderefutil.IsNodeUnreachable(node) {
 		// When the node is unreachable and some pods are not evicted for as long as this timeout, we ignore them.

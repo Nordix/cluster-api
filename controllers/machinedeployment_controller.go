@@ -101,6 +101,7 @@ func (r *MachineDeploymentReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result
 
 	// Fetch the MachineDeployment instance.
 	deployment := &clusterv1.MachineDeployment{}
+	logger.Info("DEBUG", "Value of nodedrainingtimeout in the machinedeployment reconcile", deployment.Spec)
 	if err := r.Client.Get(ctx, req.NamespacedName, deployment); err != nil {
 		if apierrors.IsNotFound(err) {
 			// Object not found, return.  Created objects are automatically garbage collected.
@@ -110,6 +111,8 @@ func (r *MachineDeploymentReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
+	logger.Info("DEBUG", "Value of nodedrainingtimeout in the machinedeployment reconcile", deployment.Spec.NodeDrainTimeout)
+	deployment.Spec.Template.Spec.NodeDrainTimeout = deployment.Spec.NodeDrainTimeout
 
 	cluster, err := util.GetClusterByName(ctx, r.Client, deployment.Namespace, deployment.Spec.ClusterName)
 	if err != nil {
@@ -191,6 +194,7 @@ func (r *MachineDeploymentReconciler) reconcile(ctx context.Context, cluster *cl
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	logger.Info("DEBUG", "Reach here!!!")
 
 	if d.Spec.Paused {
 		return ctrl.Result{}, r.sync(d, msList)

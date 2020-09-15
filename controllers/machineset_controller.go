@@ -307,6 +307,8 @@ func (r *MachineSetReconciler) syncReplicas(ctx context.Context, ms *clusterv1.M
 	}
 
 	diff := len(machines) - int(*(ms.Spec.Replicas))
+	logger.Info("DEBUG: Machineset too many", "number of machines: ", len(machines))
+	logger.Info("DEBUG: Machineset too many", "ms.Spec.Replicas: ", int(*(ms.Spec.Replicas)))
 	switch {
 	case diff < 0:
 		diff *= -1

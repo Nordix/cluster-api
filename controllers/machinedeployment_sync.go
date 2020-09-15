@@ -88,6 +88,7 @@ func (r *MachineDeploymentReconciler) getAllMachineSetsAndSyncRevision(d *cluste
 // Note that the machine-template-hash will be added to adopted MSes and machines.
 func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeployment, msList, oldMSs []*clusterv1.MachineSet, createIfNotExisted bool) (*clusterv1.MachineSet, error) {
 	logger := r.Log.WithValues("machinedeployment", d.Name, "namespace", d.Namespace)
+	logger.Info("DEBUG", "Before creating a node, XUANNAM", d.Spec.NodeDrainTimeout)
 
 	existingNewMS := mdutil.FindNewMachineSet(d, msList)
 
@@ -129,10 +130,17 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 	}
 
 	// new MachineSet does not exist, create one.
+	logger.Info("DEBUG", "deployment content: before", d)
+	if d.Spec.Template.Spec.NodeDrainTimeout != d.Spec.NodeDrainTimeout {
+		// d.Spec.Template.Spec.NodeDrainTimeout = d.Spec.NodeDrainTimeout
+	}
+	logger.Info("DEBUG", "deployment content: after", d)
 	newMSTemplate := *d.Spec.Template.DeepCopy()
 	machineTemplateSpecHash := fmt.Sprintf("%d", mdutil.ComputeHash(&newMSTemplate))
 	newMSTemplate.Labels = mdutil.CloneAndAddLabel(d.Spec.Template.Labels,
 		mdutil.DefaultMachineDeploymentUniqueLabelKey, machineTemplateSpecHash)
+	// add nodeDrainTimeout from machineDeployment to MS.template.spec (mahcineSpec)
+	// newMSTemplate.Spec.NodeDrainTimeout = d.Spec.NodeDrainTimeout
 
 	// Add machineTemplateHash label to selector.
 	newMSSelector := mdutil.CloneSelectorAndAddLabel(&d.Spec.Selector,
@@ -160,6 +168,7 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 			Template:        newMSTemplate,
 		},
 	}
+	logger.Info("DEBUG", "COme even here")
 
 	// Add foregroundDeletion finalizer to MachineSet if the MachineDeployment has it
 	if sets.NewString(d.Finalizers...).Has(metav1.FinalizerDeleteDependents) {
@@ -173,6 +182,7 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 	}
 
 	*(newMS.Spec.Replicas) = newReplicasCount
+	logger.Info("DEBUG", "new replicas count: ", newReplicasCount)
 
 	// Set new machine set's annotation
 	mdutil.SetNewMachineSetAnnotations(d, &newMS, newRevision, false, logger)
@@ -197,9 +207,13 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 		// deep equal to the MachineTemplateSpec of the Deployment, it's the Deployment's new MachineSet.
 		// Otherwise, this is a hash collision and we need to increment the collisionCount field in
 		// the status of the Deployment and requeue to try the creation in the next sync.
+		logger.Info("DEBUG", "apierrors")
 		controllerRef := metav1.GetControllerOf(ms)
-		if controllerRef != nil && controllerRef.UID == d.UID && mdutil.EqualMachineTemplate(&d.Spec.Template, &ms.Spec.Template) {
+		logger.Info("DEBUG: controllerRef != nil", "bool=", controllerRef != nil)
+		logger.Info("DEBUG", "controllerRef.UID == d.UID", controllerRef.UID == d.UID)
+		if controllerRef != nil && controllerRef.UID == d.UID && mdutil.EqualMachineTemplate(&d.Spec.Template, &ms.Spec.Template, logger) {
 			createdMS = ms
+			logger.Info("DEBUG", "not equal machine TEmplate???")
 			break
 		}
 
@@ -218,6 +232,7 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 	err = r.updateMachineDeployment(d, func(innerDeployment *clusterv1.MachineDeployment) {
 		mdutil.SetDeploymentRevision(d, newRevision)
 	})
+	logger.Info("DEBUG", "Come to the end")
 
 	return createdMS, err
 }
