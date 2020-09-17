@@ -66,6 +66,12 @@ const (
 // Conditions and condition Reasons for the Machine object
 
 const (
+	// Need some comments here
+	StartDrainingCondition        ConditionType = "StartDraining"
+	StartDrainingConditionMessage               = "Start draining this node"
+)
+
+const (
 	// BootstrapReadyCondition reports a summary of current status of the bootstrap object defined for this machine.
 	// This condition is mirrored from the Ready condition in the bootstrap ref object, and
 	// the absence of this condition might signal problems in the reconcile external loops or the fact that

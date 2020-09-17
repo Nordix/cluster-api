@@ -105,6 +105,13 @@ func GetSeverity(from Getter, t clusterv1.ConditionType) *clusterv1.ConditionSev
 	return nil
 }
 
+func GetStatus(from Getter, t clusterv1.ConditionType) *corev1.ConditionStatus {
+	if c := Get(from, t); c != nil {
+		return &c.Status
+	}
+	return nil
+}
+
 // GetLastTransitionTime returns the condition Severity or nil if the condition
 // does not exist (is nil).
 func GetLastTransitionTime(from Getter, t clusterv1.ConditionType) *metav1.Time {

@@ -298,17 +298,25 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 		conditions.MarkTrue(m, clusterv1.PreDrainDeleteHookSucceededCondition)
 
 		// Drain node before deletion and issue a patch in order to make this operation visible to the users.
-		if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists {
+		if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists && !isNodeDraintimeoutOver(m) {
 			patchHelper, err := patch.NewHelper(m, r.Client)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 
-			logger.Info("Draining node", "node", m.Status.NodeRef.Name)
+			logger.Info("DEBUG", "Draining node", m.Status.NodeRef.Name)
+			// logger.Info("DEBUG", "The status", conditions.Get(m, clusterv1.StartDrainingCondition))
+			if conditions.Get(m, clusterv1.StartDrainingCondition) == nil {
+				conditions.MarkTrue(m, clusterv1.StartDrainingCondition)
+			}
+
 			conditions.MarkFalse(m, clusterv1.DrainingSucceededCondition, clusterv1.DrainingReason, clusterv1.ConditionSeverityInfo, "Draining the node before deletion")
 			if err := patchMachine(ctx, patchHelper, m); err != nil {
 				return ctrl.Result{}, errors.Wrap(err, "failed to patch Machine")
 			}
+
+			// Check if the this node draining timeout is over
+			// conditions.Get(m, clusterv1.StartDrainingCondition)
 
 			if err := r.drainNode(ctx, cluster, m.Status.NodeRef.Name, m.Name, m.Spec.NodeDrainTimeout); err != nil {
 				conditions.MarkFalse(m, clusterv1.DrainingSucceededCondition, clusterv1.DrainingFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
@@ -360,6 +368,19 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 
 	controllerutil.RemoveFinalizer(m, clusterv1.MachineFinalizer)
 	return ctrl.Result{}, nil
+}
+
+func isNodeDraintimeoutOver(machine *clusterv1.Machine) bool {
+	// if cai condition do khong ton tai --> false
+	// if no ton tai:
+	if conditions.Get(machine, clusterv1.StartDrainingCondition) == nil {
+		return false
+	}
+	now := time.Now()
+	firstTimeDrain := conditions.GetLastTransitionTime(machine, clusterv1.StartDrainingCondition)
+	diff := now.Sub(firstTimeDrain.Time)
+	return diff.Seconds() >= float64(machine.Spec.NodeDrainTimeout)
+
 }
 
 // isDeleteNodeAllowed returns nil only if the Machine's NodeRef is not nil
