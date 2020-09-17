@@ -66,6 +66,11 @@ type KubeadmControlPlaneSpec struct {
 	// KubeadmControlPlane
 	// +optional
 	UpgradeAfter *metav1.Time `json:"upgradeAfter,omitempty"`
+
+	// NodeDrainTimeout is the total amount of time for draining a control plane node
+	// Note that this NodeDrainTimeout is different from `kubectl drain --timeout`
+	// +optional
+	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
 }
 
 // KubeadmControlPlaneStatus defines the observed state of KubeadmControlPlane.

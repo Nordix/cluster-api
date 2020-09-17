@@ -89,6 +89,11 @@ type MachineSpec struct {
 	// Must match a key in the FailureDomains map stored on the cluster object.
 	// +optional
 	FailureDomain *string `json:"failureDomain,omitempty"`
+
+	// NodeDrainTimeout is the total amount of time for draining a worker node
+	// Note that this NodeDrainTimeout is different from `kubectl drain --timeout`
+	// +optional
+	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
 }
 
 // ANCHOR_END: MachineSpec
