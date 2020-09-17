@@ -628,7 +628,6 @@ func autoConvert_v1alpha3_MachineDeploymentSpec_To_v1alpha2_MachineDeploymentSpe
 	out.RevisionHistoryLimit = (*int32)(unsafe.Pointer(in.RevisionHistoryLimit))
 	out.Paused = in.Paused
 	out.ProgressDeadlineSeconds = (*int32)(unsafe.Pointer(in.ProgressDeadlineSeconds))
-	// WARNING: in.NodeDrainTimeout requires manual conversion: does not exist in peer-type
 	return nil
 }
 

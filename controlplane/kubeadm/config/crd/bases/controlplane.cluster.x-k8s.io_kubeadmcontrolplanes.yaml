@@ -1029,7 +1029,6 @@ spec:
                     type: integer
                 type: object
               nodeDrainTimeout:
-                description: Configurable timeout for node draining.
                 format: int64
                 type: integer
               replicas:

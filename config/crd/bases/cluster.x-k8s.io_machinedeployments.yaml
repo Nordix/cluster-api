@@ -595,10 +595,6 @@ spec:
                   as soon as it is ready)
                 format: int32
                 type: integer
-              nodeDrainTimeout:
-                description: Test nodeDrainTimeout parameter
-                format: int64
-                type: integer
               paused:
                 description: Indicates that the deployment is paused.
                 type: boolean

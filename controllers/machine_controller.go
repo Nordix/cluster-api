@@ -299,13 +299,13 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 
 		// Drain node before deletion and issue a patch in order to make this operation visible to the users.
 		if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists && !isNodeDraintimeoutOver(m) {
+			// if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists {
 			patchHelper, err := patch.NewHelper(m, r.Client)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 
-			logger.Info("DEBUG", "Draining node", m.Status.NodeRef.Name)
-			// logger.Info("DEBUG", "The status", conditions.Get(m, clusterv1.StartDrainingCondition))
+			logger.Info("Draining node", "node", m.Status.NodeRef.Name)
 			if conditions.Get(m, clusterv1.StartDrainingCondition) == nil {
 				conditions.MarkTrue(m, clusterv1.StartDrainingCondition)
 			}
@@ -314,9 +314,6 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 			if err := patchMachine(ctx, patchHelper, m); err != nil {
 				return ctrl.Result{}, errors.Wrap(err, "failed to patch Machine")
 			}
-
-			// Check if the this node draining timeout is over
-			// conditions.Get(m, clusterv1.StartDrainingCondition)
 
 			if err := r.drainNode(ctx, cluster, m.Status.NodeRef.Name, m.Name, m.Spec.NodeDrainTimeout); err != nil {
 				conditions.MarkFalse(m, clusterv1.DrainingSucceededCondition, clusterv1.DrainingFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
@@ -371,9 +368,12 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 }
 
 func isNodeDraintimeoutOver(machine *clusterv1.Machine) bool {
-	// if cai condition do khong ton tai --> false
-	// if no ton tai:
+	// if the start draining condition does not exist
 	if conditions.Get(machine, clusterv1.StartDrainingCondition) == nil {
+		return false
+	}
+	// if the NodeDrainTineout type is not set by user
+	if machine.Spec.NodeDrainTimeout <= 0 {
 		return false
 	}
 	now := time.Now()
@@ -416,10 +416,8 @@ func (r *MachineReconciler) isDeleteNodeAllowed(ctx context.Context, cluster *cl
 	}
 }
 
-//DEBUG
 func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cluster, nodeName string, machineName string, nodeDrainTimeout int64) error {
 	logger := r.Log.WithValues("machine", machineName, "node", nodeName, "cluster", cluster.Name, "namespace", cluster.Namespace)
-	//DEBUG
 
 	restConfig, err := remote.RESTConfig(ctx, r.Client, util.ObjectKey(cluster))
 	if err != nil {
@@ -449,9 +447,7 @@ func (r *MachineReconciler) drainNode(ctx context.Context, cluster *clusterv1.Cl
 		GracePeriodSeconds:  -1,
 		// If a pod is not evicted in 20 seconds, retry the eviction next time the
 		// machine gets reconciled again (to allow other machines to be reconciled).
-		// Timeout: 20 * time.Second,
-		//DEBUG
-		Timeout: time.Duration(nodeDrainTimeout) * time.Second,
+		Timeout: 20 * time.Second,
 		OnPodDeletedOrEvicted: func(pod *corev1.Pod, usingEviction bool) {
 			verbStr := "Deleted"
 			if usingEviction {

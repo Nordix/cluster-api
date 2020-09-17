@@ -111,8 +111,6 @@ func (r *MachineDeploymentReconciler) Reconcile(req ctrl.Request) (_ ctrl.Result
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
 	}
-	logger.Info("DEBUG", "Value of nodedrainingtimeout in the machinedeployment reconcile", deployment.Spec.NodeDrainTimeout)
-	deployment.Spec.Template.Spec.NodeDrainTimeout = deployment.Spec.NodeDrainTimeout
 
 	cluster, err := util.GetClusterByName(ctx, r.Client, deployment.Namespace, deployment.Spec.ClusterName)
 	if err != nil {

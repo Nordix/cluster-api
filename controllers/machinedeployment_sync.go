@@ -88,7 +88,7 @@ func (r *MachineDeploymentReconciler) getAllMachineSetsAndSyncRevision(d *cluste
 // Note that the machine-template-hash will be added to adopted MSes and machines.
 func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeployment, msList, oldMSs []*clusterv1.MachineSet, createIfNotExisted bool) (*clusterv1.MachineSet, error) {
 	logger := r.Log.WithValues("machinedeployment", d.Name, "namespace", d.Namespace)
-	logger.Info("DEBUG", "Before creating a node, XUANNAM", d.Spec.NodeDrainTimeout)
+	// logger.Info("DEBUG", "Before creating a node, XUANNAM", d.Spec.NodeDrainTimeout)
 
 	existingNewMS := mdutil.FindNewMachineSet(d, msList)
 
@@ -131,16 +131,11 @@ func (r *MachineDeploymentReconciler) getNewMachineSet(d *clusterv1.MachineDeplo
 
 	// new MachineSet does not exist, create one.
 	logger.Info("DEBUG", "deployment content: before", d)
-	if d.Spec.Template.Spec.NodeDrainTimeout != d.Spec.NodeDrainTimeout {
-		// d.Spec.Template.Spec.NodeDrainTimeout = d.Spec.NodeDrainTimeout
-	}
 	logger.Info("DEBUG", "deployment content: after", d)
 	newMSTemplate := *d.Spec.Template.DeepCopy()
 	machineTemplateSpecHash := fmt.Sprintf("%d", mdutil.ComputeHash(&newMSTemplate))
 	newMSTemplate.Labels = mdutil.CloneAndAddLabel(d.Spec.Template.Labels,
 		mdutil.DefaultMachineDeploymentUniqueLabelKey, machineTemplateSpecHash)
-	// add nodeDrainTimeout from machineDeployment to MS.template.spec (mahcineSpec)
-	// newMSTemplate.Spec.NodeDrainTimeout = d.Spec.NodeDrainTimeout
 
 	// Add machineTemplateHash label to selector.
 	newMSSelector := mdutil.CloneSelectorAndAddLabel(&d.Spec.Selector,
