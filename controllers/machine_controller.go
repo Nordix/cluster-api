@@ -299,14 +299,16 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 		conditions.MarkTrue(m, clusterv1.PreDrainDeleteHookSucceededCondition)
 
 		// Drain node before deletion and issue a patch in order to make this operation visible to the users.
-		if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists && !isNodeDraintimeoutOver(m) {
-			// if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; !exists {
+		if drainAllowed := r.isNodeDrainAllowed(m); drainAllowed {
 			patchHelper, err := patch.NewHelper(m, r.Client)
 			if err != nil {
 				return ctrl.Result{}, err
 			}
 
 			logger.Info("Draining node", "node", m.Status.NodeRef.Name)
+			// The DrainingSucceededCondition never exists before the node is drained for the first time,
+			// so its transition time can be used to record the first time draining.
+			// This `if` condition prevents the transition time to be changed more than once.
 			if conditions.Get(m, clusterv1.DrainingSucceededCondition) == nil {
 				conditions.MarkFalse(m, clusterv1.DrainingSucceededCondition, clusterv1.DrainingReason, clusterv1.ConditionSeverityInfo, "Draining the node before deletion")
 			}
@@ -367,7 +369,20 @@ func (r *MachineReconciler) reconcileDelete(ctx context.Context, cluster *cluste
 	return ctrl.Result{}, nil
 }
 
-func isNodeDraintimeoutOver(machine *clusterv1.Machine) bool {
+func (r *MachineReconciler) isNodeDrainAllowed(m *clusterv1.Machine) bool {
+	if _, exists := m.ObjectMeta.Annotations[clusterv1.ExcludeNodeDrainingAnnotation]; exists {
+		return false
+	}
+
+	if timeout := r.isNodeDraintimeoutOver(m); timeout {
+		return false
+	}
+
+	return true
+
+}
+
+func (r *MachineReconciler) isNodeDraintimeoutOver(machine *clusterv1.Machine) bool {
 	// if the start draining condition does not exist
 	if conditions.Get(machine, clusterv1.DrainingSucceededCondition) == nil {
 		return false
