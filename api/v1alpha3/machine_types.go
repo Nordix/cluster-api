@@ -90,7 +90,7 @@ type MachineSpec struct {
 	// +optional
 	FailureDomain *string `json:"failureDomain,omitempty"`
 
-	// NodeDrainTimeout is the total amount of time for draining a worker node
+	// NodeDrainTimeout is the total amount of time that the controller will spend on draining a node.
 	// Note that this NodeDrainTimeout is different from `kubectl drain --timeout`
 	// +optional
 	NodeDrainTimeout int64 `json:"nodeDrainTimeout,omitempty"`
