@@ -143,6 +143,9 @@ func (dst *Machine) ConvertFrom(srcRaw conversion.Hub) error {
 		delete(src.Annotations, v1alpha3.ExcludeNodeDrainingAnnotation)
 	}
 
+	// Manually convert NodeDrainTimeout: Ignore it in v1alpha2
+	src.Spec.NodeDrainTimeout = 0
+
 	// Preserve Hub data on down-conversion except for metadata
 	if err := utilconversion.MarshalData(src, dst); err != nil {
 		return err
@@ -205,6 +208,9 @@ func (dst *MachineSet) ConvertFrom(srcRaw conversion.Hub) error {
 	for i := range v3Annotations {
 		convertAnnotations(v3Annotations[i], v2Annotations[i], dst.Annotations)
 	}
+
+	// Manually convert NodeDrainTimeout: Ignore it in v1alpha2
+	src.Spec.Template.Spec.NodeDrainTimeout = 0
 
 	// Preserve Hub data on down-conversion except for metadata
 	if err := utilconversion.MarshalData(src, dst); err != nil {
@@ -270,6 +276,9 @@ func (dst *MachineDeployment) ConvertFrom(srcRaw conversion.Hub) error {
 	for i := range v3Annotations {
 		convertAnnotations(v3Annotations[i], v2Annotations[i], dst.Annotations)
 	}
+
+	// Manually convert NodeDrainTimeout: Ignore it in v1alpha2
+	src.Spec.Template.Spec.NodeDrainTimeout = 0
 
 	// Preserve Hub data on down-conversion except for metadata
 	if err := utilconversion.MarshalData(src, dst); err != nil {
