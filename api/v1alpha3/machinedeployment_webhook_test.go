@@ -47,6 +47,7 @@ func TestMachineDeploymentDefault(t *testing.T) {
 	g.Expect(md.Spec.Strategy.RollingUpdate).ToNot(BeNil())
 	g.Expect(md.Spec.Strategy.RollingUpdate.MaxSurge.IntValue()).To(Equal(1))
 	g.Expect(md.Spec.Strategy.RollingUpdate.MaxUnavailable.IntValue()).To(Equal(0))
+	g.Expect(md.Spec.Template.Spec.NodeDrainTimeout).ToNot(BeNil())
 }
 
 func TestMachineDeploymentValidation(t *testing.T) {

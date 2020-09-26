@@ -23,8 +23,10 @@ import (
 	. "github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/api/policy/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/pointer"
@@ -33,7 +35,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
+	"sigs.k8s.io/cluster-api/controllers/remote"
+
+	appsv1 "k8s.io/api/apps/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
@@ -107,6 +113,7 @@ var _ = Describe("MachineDeployment Reconciler", func() {
 						Bootstrap: clusterv1.Bootstrap{
 							DataSecretName: pointer.StringPtr("data-secret-name"),
 						},
+						NodeDrainTimeout: nodeDrainTimeout,
 					},
 				},
 			},
@@ -373,6 +380,133 @@ var _ = Describe("MachineDeployment Reconciler", func() {
 
 		// Validate that the controller set the cluster name label in selector.
 		Expect(deployment.Status.Selector).To(ContainSubstring(testCluster.Name))
+
+		//TODO: delete comment
+
+		// get cai client for workloadcluster
+
+		// key := client.ObjectKey{Name: deployment.Name, Namespace: deployment.Namespace}
+		// namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "md-test"}}
+		// testCluster := &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Namespace: namespace.Name, Name: "test-cluster"}}
+		By("Creating the client for the workload cluster")
+		clusterKey := client.ObjectKey{Name: testCluster.ObjectMeta.Name, Namespace: testCluster.ObjectMeta.Namespace}
+		workloadClient, err := remote.NewClusterClient(ctx, testEnv, clusterKey, testEnv.GetScheme())
+		Expect(err).To(BeNil())
+
+		nonStopPodDeployment := &appsv1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unevictable-pods",
+				Namespace: "default",
+			},
+			Spec: appsv1.DeploymentSpec{
+				Replicas: pointer.Int32Ptr(10),
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "nonstop",
+					},
+				},
+				Template: corev1.PodTemplateSpec{
+					ObjectMeta: metav1.ObjectMeta{
+						Labels: map[string]string{
+							"app": "nonstop",
+						},
+					},
+					Spec: corev1.PodSpec{
+						Containers: []corev1.Container{
+							{
+								Name:  "web",
+								Image: "nginx:1.12",
+								Ports: []corev1.ContainerPort{
+									{
+										Name:          "http",
+										Protocol:      corev1.ProtocolTCP,
+										ContainerPort: 80,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+
+		budget := &v1beta1.PodDisruptionBudget{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "unevictable-pods",
+				Namespace: "default",
+			},
+			Spec: v1beta1.PodDisruptionBudgetSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": "nonstop",
+					},
+				},
+				MaxUnavailable: &intstr.IntOrString{
+					Type:   intstr.Int,
+					IntVal: 1,
+					StrVal: "1",
+				},
+			},
+		}
+		//TODO: delete comments
+		// check xem ham create no tra lai cai gi, co phai la error khong?
+
+		//Add deployment to the workload cluster
+		By("Adding deployment to the workload cluster")
+		Expect(workloadClient.Create(ctx, nonStopPodDeployment)).To(Succeed())
+		Expect(workloadClient.Create(ctx, budget)).To(Succeed())
+
+		//By("Verifying all pods have been deployed inside the workload cluster")
+		//Eventually(func() bool {
+		//	// listPods := []corev1.Pod{} //TODO: pointer or
+		//	podDeployment := &appsv1.Deployment{}
+		//	listOpts := client.InNamespace("default")
+		//	Expect(workloadClient.List(ctx, podDeployment, listOpts)).To(Succeed())
+
+		//	if podDeployment.Spec.Replicas == nil {
+		//		return false
+		//	}
+		//	if podDeployment.Status.ReadyReplicas < *podDeployment.Spec.Replicas {
+		//		return false
+		//	}
+		//	//TODO: Delete comments
+		//	// for _, p := range listPods {
+		//	// 	if p.Status.Phase != "Running" {
+		//	// 		return false
+		//	// 	}
+		//	// }
+		//	return true
+		//}, timeout).Should(BeEquivalentTo(true))
+		// By("Scaling the MachineDeployment down to zero")
+		// modifyFunc = func(d *clusterv1.MachineDeployment) { d.Spec.Replicas = pointer.Int32Ptr(0) }
+		// Expect(updateMachineDeployment(testEnv, deployment, modifyFunc)).To(Succeed())
+		// Eventually(func() int {
+		// 	// key := client.ObjectKey{Name: secondMachineSet.Name, Namespace: secondMachineSet.Namespace}
+		// 	listOpts := client.MatchingLabels(newLabels)
+		// 	remainMachines := &clusterv1.MachineList{}
+		// 	if err := testEnv.List(ctx, remainMachines, listOpts); err != nil {
+		// 		return -1
+		// 	}
+		// 	return int(*remainMachines.RemainingItemCount)
+		// }, time.Second*nodeDrainTimeout+(time.Minute*2)).Should(BeEquivalentTo(0)) //TODO: change to other timeout
+
+		By("Scaling the MachineDeployment down to zero")
+		modifyFunc = func(d *clusterv1.MachineDeployment) { d.Spec.Replicas = pointer.Int32Ptr(0) }
+		Expect(updateMachineDeployment(testEnv, deployment, modifyFunc)).To(Succeed())
+		Eventually(func() int {
+			// key := client.ObjectKey{Name: secondMachineSet.Name, Namespace: secondMachineSet.Namespace}
+			listOpts := client.MatchingLabels(newLabels)
+			remainMachines := &clusterv1.MachineList{}
+			if err := testEnv.List(ctx, remainMachines, listOpts); err != nil {
+				return -1
+			}
+			Expect(remainMachines).To(BeNil())
+			return int(*remainMachines.RemainingItemCount)
+		}, time.Second*30).Should(BeEquivalentTo(0)) //TODO: change to other timeout
+
+		//Add podDisruption to the workload clusyer
+		//Scale down and wiat until all machine controlled by the deployment is gone
+
 	})
 })
 
