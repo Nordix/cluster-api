@@ -40,6 +40,7 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/remote"
 
 	appsv1 "k8s.io/api/apps/v1"
+	"k8s.io/client-go/kubernetes"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util"
@@ -389,8 +390,26 @@ var _ = Describe("MachineDeployment Reconciler", func() {
 		// namespace := &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "md-test"}}
 		// testCluster := &clusterv1.Cluster{ObjectMeta: metav1.ObjectMeta{Namespace: namespace.Name, Name: "test-cluster"}}
 		By("Creating the client for the workload cluster")
-		clusterKey := client.ObjectKey{Name: testCluster.ObjectMeta.Name, Namespace: testCluster.ObjectMeta.Namespace}
-		workloadClient, err := remote.NewClusterClient(ctx, testEnv, clusterKey, testEnv.GetScheme())
+		// clusterKey := client.ObjectKey{Name: testCluster.ObjectMeta.Name, Namespace: testCluster.ObjectMeta.Namespace}
+		// workloadClient, err := remote.NewClusterClient(ctx, testEnv, clusterKey, testEnv.GetScheme())
+
+		// restConfig, err := remote.RESTConfig(ctx, r.Client, util.ObjectKey(cluster))
+		// if err != nil {
+		// logger.Error(err, "Error creating a remote client while deleting Machine, won't retry")
+		// return nil
+		// }
+		// kubeClient, err := kubernetes.NewForConfig(restConfig)
+		// if err != nil {
+		// logger.Error(err, "Error creating a remote client while deleting Machine, won't retry")
+		// return nil
+		// }
+
+		// node, err := kubeClient.CoreV1().Nodes().Get(nodeName, metav1.GetOptions{})
+		restConfig, err := remote.RESTConfig(ctx, testEnv, util.ObjectKey(testCluster))
+		Expect(err).To(BeNil(), "Error creating a workload client")
+		workloadClient, err := kubernetes.NewForConfig(restConfig)
+		Expect(err).To(BeNil(), "Error creating a workload client")
+
 		Expect(err).To(BeNil())
 
 		nonStopPodDeployment := &appsv1.Deployment{
@@ -453,30 +472,38 @@ var _ = Describe("MachineDeployment Reconciler", func() {
 
 		//Add deployment to the workload cluster
 		By("Adding deployment to the workload cluster")
-		Expect(workloadClient.Create(ctx, nonStopPodDeployment)).To(Succeed())
-		Expect(workloadClient.Create(ctx, budget)).To(Succeed())
 
-		//By("Verifying all pods have been deployed inside the workload cluster")
-		//Eventually(func() bool {
-		//	// listPods := []corev1.Pod{} //TODO: pointer or
-		//	podDeployment := &appsv1.Deployment{}
-		//	listOpts := client.InNamespace("default")
-		//	Expect(workloadClient.List(ctx, podDeployment, listOpts)).To(Succeed())
+		_, err = workloadClient.AppsV1().Deployments("default").Create(nonStopPodDeployment)
+		// Expect(err).To(BeNil())
 
-		//	if podDeployment.Spec.Replicas == nil {
-		//		return false
-		//	}
-		//	if podDeployment.Status.ReadyReplicas < *podDeployment.Spec.Replicas {
-		//		return false
-		//	}
-		//	//TODO: Delete comments
-		//	// for _, p := range listPods {
-		//	// 	if p.Status.Phase != "Running" {
-		//	// 		return false
-		//	// 	}
-		//	// }
-		//	return true
-		//}, timeout).Should(BeEquivalentTo(true))
+		// Expect(workloadClient.Create(ctx, budget)).To(Succeed())
+		_, err = workloadClient.PolicyV1beta1().PodDisruptionBudgets("default").Create(budget)
+		// Expect(err).To(BeNil())
+
+		By("Verifying all pods have been deployed inside the workload cluster")
+		Eventually(func() bool {
+			// listPods := []corev1.Pod{} //TODO: pointer or
+			podDeployment := &appsv1.Deployment{}
+			// listOpts := client.InNamespace("default")
+			listOpts := metav1.ListOptions{}
+			// Expect(workloadClient.List(ctx, podDeployment, listOpts)).To(Succeed())
+			workloadClient.AppsV1().Deployments("default").List(listOpts)
+
+			if podDeployment.Spec.Replicas == nil {
+				return false
+			}
+			if podDeployment.Status.ReadyReplicas < *podDeployment.Spec.Replicas {
+				return false
+			}
+			//TODO: Delete comments
+			// for _, p := range listPods {
+			// 	if p.Status.Phase != "Running" {
+			// 		return false
+			// 	}
+			// }
+			return true
+		}, time.Second*120).Should(BeEquivalentTo(true))
+
 		// By("Scaling the MachineDeployment down to zero")
 		// modifyFunc = func(d *clusterv1.MachineDeployment) { d.Spec.Replicas = pointer.Int32Ptr(0) }
 		// Expect(updateMachineDeployment(testEnv, deployment, modifyFunc)).To(Succeed())
@@ -487,22 +514,10 @@ var _ = Describe("MachineDeployment Reconciler", func() {
 		// 	if err := testEnv.List(ctx, remainMachines, listOpts); err != nil {
 		// 		return -1
 		// 	}
+		// 	Expect(remainMachines).To(BeNil())
 		// 	return int(*remainMachines.RemainingItemCount)
+		// }, time.Second*30).Should(BeEquivalentTo(0)) //TODO: change to other timeout
 		// }, time.Second*nodeDrainTimeout+(time.Minute*2)).Should(BeEquivalentTo(0)) //TODO: change to other timeout
-
-		By("Scaling the MachineDeployment down to zero")
-		modifyFunc = func(d *clusterv1.MachineDeployment) { d.Spec.Replicas = pointer.Int32Ptr(0) }
-		Expect(updateMachineDeployment(testEnv, deployment, modifyFunc)).To(Succeed())
-		Eventually(func() int {
-			// key := client.ObjectKey{Name: secondMachineSet.Name, Namespace: secondMachineSet.Namespace}
-			listOpts := client.MatchingLabels(newLabels)
-			remainMachines := &clusterv1.MachineList{}
-			if err := testEnv.List(ctx, remainMachines, listOpts); err != nil {
-				return -1
-			}
-			Expect(remainMachines).To(BeNil())
-			return int(*remainMachines.RemainingItemCount)
-		}, time.Second*30).Should(BeEquivalentTo(0)) //TODO: change to other timeout
 
 		//Add podDisruption to the workload clusyer
 		//Scale down and wiat until all machine controlled by the deployment is gone
