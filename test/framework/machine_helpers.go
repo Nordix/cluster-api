@@ -143,6 +143,49 @@ func WaitForControlPlaneMachinesToBeUpgraded(ctx context.Context, input WaitForC
 	}, intervals...).Should(Equal(input.MachineCount))
 }
 
+// WaitForNodeDrainTimeoutInMachinesToBeUpdatedInput is the input for WaitForNodeDrainTimeoutInMachinesToBeUpdated.
+type WaitForNodeDrainTimeoutInMachinesToBeUpdatedInput struct {
+	Lister            Lister
+	Cluster           *clusterv1.Cluster
+	MachineDeployment clusterv1.MachineDeployment
+	NodeDrainTimeout  int64
+}
+
+// WaitForNodeDrainTimeoutInMachinesToBeUpdated waits until all machines belonging to a MachineDeployment are upgraded to the correct kubernetes version.
+func WaitForNodeDrainTimeoutInMachinesToBeUpdated(ctx context.Context, input WaitForNodeDrainTimeoutInMachinesToBeUpdatedInput, intervals ...interface{}) {
+	Expect(ctx).NotTo(BeNil(), "ctx is required for WaitForNodeDrainTimeoutInMachinesToBeUpdated")
+	Expect(input.Lister).ToNot(BeNil(), "Invalid argument. input.Getter can't be nil when calling WaitForNodeDrainTimeoutInMachinesToBeUpdated")
+	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling WaitForNodeDrainTimeoutInMachinesToBeUpdated")
+	Expect(input.MachineDeployment).ToNot(BeNil(), "Invalid argument. input.MachineDeployment can't be nil when calling WaitForNodeDrainTimeoutInMachinesToBeUpdated")
+
+	log.Logf("Ensuring all MachineDeployment Machines have new nodeDrainTimeout %s", input.NodeDrainTimeout)
+	//TODO: delete below
+	log.Logf("Make sure the md is updated %s", input.MachineDeployment.Spec.Template.Spec.NodeDrainTimeout)
+
+	Eventually(func() (int, error) {
+		machines := GetMachinesByMachineDeployments(ctx, GetMachinesByMachineDeploymentsInput{
+			Lister:            input.Lister,
+			ClusterName:       input.Cluster.Name,
+			Namespace:         input.Cluster.Namespace,
+			MachineDeployment: input.MachineDeployment,
+		})
+		//TODO: delete
+		log.Logf("len of machines: %s", len(machines))
+		log.Logf("value of machines spec nodedraintimeout: %s", machines[0].Spec.NodeDrainTimeout)
+
+		updated := 0
+		for _, machine := range machines {
+			if machine.Spec.NodeDrainTimeout == input.NodeDrainTimeout {
+				updated++
+			}
+		}
+		if len(machines) > updated {
+			return 0, errors.New("old machines remain")
+		}
+		return updated, nil
+	}, intervals...).Should(Equal(int(*input.MachineDeployment.Spec.Replicas)))
+}
+
 // WaitForMachineDeploymentMachinesToBeUpgradedInput is the input for WaitForMachineDeploymentMachinesToBeUpgraded.
 type WaitForMachineDeploymentMachinesToBeUpgradedInput struct {
 	Lister                   Lister

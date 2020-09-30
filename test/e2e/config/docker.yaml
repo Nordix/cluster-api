@@ -83,6 +83,7 @@ variables:
   DOCKER_POD_CIDRS: "192.168.0.0/16"
   CNI: "./data/cni/kindnet/kindnet.yaml"
   EXP_CLUSTER_RESOURCE_SET: "true"
+  NODE_DRAIN_TIMEOUT: "60"
 
 intervals:
   default/wait-controllers: ["3m", "10s"]
@@ -92,3 +93,6 @@ intervals:
   default/wait-delete-cluster: ["3m", "10s"]
   default/wait-machine-upgrade: ["20m", "10s"]
   default/wait-machine-remediation: ["5m", "10s"]
+  default/wait-deployment-available: ["3m", "10s"]
+  default/wait-node-drain: ["4m", "60s"]
+  default/wait-machine-updated: ["4m", "10s"]

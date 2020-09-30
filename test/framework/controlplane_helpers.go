@@ -21,13 +21,20 @@ import (
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
+	"k8s.io/utils/pointer"
 
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/test/framework/internal/log"
+	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -351,4 +358,148 @@ func controlPlaneMachineOptions() []client.ListOption {
 	return []client.ListOption{
 		client.HasLabels{clusterv1.MachineControlPlaneLabelName},
 	}
+}
+
+type UpdateControlplaneNodeDrainTimeoutInput struct {
+	Controlplane               *controlplanev1.KubeadmControlPlane
+	NodeDrainTimeout           int64
+	ClusterProxy               ClusterProxy
+	Cluster                    *clusterv1.Cluster
+	WaitForMachinesToBeUpdated []interface{}
+}
+
+func UpdateControlplaneNodeDrainTimeout(ctx context.Context, input UpdateControlplaneNodeDrainTimeoutInput) {
+	Expect(ctx).NotTo(BeNil())
+	Expect(input.ClusterProxy).ToNot(BeNil())
+	Expect(input.Cluster).ToNot(BeNil())
+	Expect(input.Controlplane).ToNot(BeEmpty())
+	controlplane := input.Controlplane
+	mgmtClient := input.ClusterProxy.GetClient()
+
+	patchHelper, err := patch.NewHelper(controlplane, mgmtClient)
+	Expect(err).ToNot(HaveOccurred())
+	controlplane.Spec.NodeDrainTimeout = input.NodeDrainTimeout
+	Expect(patchHelper.Patch(context.TODO(), controlplane)).To(Succeed())
+
+	Eventually(func() (int, error) {
+		controlplaneMachines := GetControlPlaneMachinesByCluster(ctx, GetControlPlaneMachinesByClusterInput{
+			Lister:      mgmtClient,
+			ClusterName: input.Cluster.GetName(),
+			Namespace:   input.Cluster.GetNamespace(),
+		})
+		//TODO: delete log
+		log.Logf("len of machines: %s", len(controlplaneMachines))
+		log.Logf("value of machines spec nodedraintimeout: %s", controlplaneMachines[0].Spec.NodeDrainTimeout)
+
+		updated := 0
+		for _, machine := range controlplaneMachines {
+			if machine.Spec.NodeDrainTimeout == input.NodeDrainTimeout {
+				updated++
+			}
+		}
+		if len(controlplaneMachines) > updated {
+			return 0, errors.New("old machines remain")
+		}
+		return updated, nil
+	}, input.WaitForMachinesToBeUpdated...).Should(Equal(int(*controlplane.Spec.Replicas)))
+}
+
+type DeployWorkloadOnControlplaneNodeInput struct {
+	ClusterProxy                       ClusterProxy
+	Cluster                            *clusterv1.Cluster
+	WaitForDeploymentAvailableInterval []interface{}
+	Controlplane                       *controlplanev1.KubeadmControlPlane
+}
+
+func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadOnControlplaneNodeInput) {
+	// tain node
+	// workload client
+	Expect(input.ClusterProxy).NotTo(BeNil())
+	Expect(input.Cluster).NotTo(BeNil())
+	Expect(input.WaitForDeploymentAvailableInterval).NotTo(BeNil())
+
+	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
+	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
+	workloadClient, err := kubernetes.NewForConfig(restConfig)
+	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
+
+	log.Logf("Untaint the controlplane node")
+	listOptions := metav1.ListOptions{
+	  MatchLabel: m
+	}
+	controlPlaneNodes, err := workloadClient.CoreV1().Nodes().List(metav1.ListOptions{})
+	Expect(controlPlaneNodes).ToNot(BeNil())
+	Expect(err).To(BeNil())
+
+	for _, node := range controlPlaneNodes.Items {
+		node.Spec.Taints = []corev1.Taint{}
+		updatedNode, err := workloadClient.CoreV1().Nodes().Update(&node)
+		Expect(updatedNode.Spec.Taints).To(Equal([]corev1.Taint{}))
+		Expect(err).To(BeNil())
+	}
+	//Wait for deployment to be available?
+	// deployment?
+	log.Logf("Wait for the unevictable pods redeployed into the controlplane node")
+	deployments, err := workloadClient.AppsV1().Deployments("default").List(metav1.ListOptions{})
+	Expect(deployments).ToNot(BeNil())
+	Expect(err).To(BeNil())
+	for _, d := range deployments.Items {
+		WaitForDeploymentsAvailableClientset(WaitForDeploymentsAvailableClientsetInput{
+			ClientSet:                           workloadClient,
+			Deployment:                          &d,
+			WaitForDeploymentsAvailableInterval: input.WaitForDeploymentAvailableInterval,
+		})
+	}
+
+	log.Logf("Scale down the controlplane of the workload cluster and make sure that all nodes are deleted even the draining process is blocked ")
+
+}
+
+type ScaleAndWaitControlPlaneInput struct {
+	ClusterProxy        ClusterProxy
+	Cluster             *clusterv1.Cluster
+	ControlPlane        *controlplanev1.KubeadmControlPlane
+	Replicas            int32
+	WaitForControlPlane []interface{}
+}
+
+// ScaleAndWaitMachineDeployment scales MachineDeployment and waits until all machines have node ref and equal to Replicas.
+func ScaleAndWaitControlPlane(ctx context.Context, input ScaleAndWaitControlPlaneInput) {
+	Expect(ctx).NotTo(BeNil(), "ctx is required for ScaleAndWaitControlPlane")
+	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling ScaleAndWaitControlPlane")
+	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling ScaleAndWaitControlPlane")
+
+	log.Logf("Scaling controlplane %s/%s from %v to %v replicas", input.ControlPlane.Namespace, input.ControlPlane.Name, input.ControlPlane.Spec.Replicas, input.Replicas)
+	patchHelper, err := patch.NewHelper(input.ControlPlane, input.ClusterProxy.GetClient())
+	Expect(err).ToNot(HaveOccurred())
+	input.ControlPlane.Spec.Replicas = pointer.Int32Ptr(input.Replicas)
+	Expect(patchHelper.Patch(ctx, input.ControlPlane)).To(Succeed())
+
+	log.Logf("Waiting for correct number of replicas to exist")
+	Eventually(func() (int, error) {
+		kcpLabelSelector, err := metav1.ParseToLabelSelector(input.ControlPlane.Status.Selector)
+		if err != nil {
+			return -1, err
+		}
+
+		selectorMap, err := metav1.LabelSelectorAsMap(kcpLabelSelector)
+		if err != nil {
+			return -1, err
+		}
+		machines := &clusterv1.MachineList{}
+		if err := input.ClusterProxy.GetClient().List(ctx, machines, client.InNamespace(input.ControlPlane.Namespace), client.MatchingLabels(selectorMap)); err != nil {
+			return -1, err
+		}
+		nodeRefCount := 0
+		for _, machine := range machines.Items {
+			if machine.Status.NodeRef != nil {
+				nodeRefCount++
+			}
+		}
+		if len(machines.Items) != nodeRefCount {
+			return -1, errors.New("Machine count does not match existing nodes count")
+		}
+		return nodeRefCount, nil
+	}, input.WaitForControlPlane...).Should(Equal(int(*input.ControlPlane.Spec.Replicas)))
+
 }

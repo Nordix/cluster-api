@@ -34,9 +34,18 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes"
+
+	"k8s.io/api/policy/v1beta1"
+	"k8s.io/utils/pointer"
+
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/test/framework/internal/log"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	//TODO: Delete later
+	"sigs.k8s.io/cluster-api/controllers/remote"
+	"sigs.k8s.io/cluster-api/util"
 )
 
 // WaitForDeploymentsAvailableInput is the input for WaitForDeploymentsAvailable.
@@ -52,6 +61,7 @@ func WaitForDeploymentsAvailable(ctx context.Context, input WaitForDeploymentsAv
 	By(fmt.Sprintf("Waiting for deployment %s/%s to be available", input.Deployment.GetNamespace(), input.Deployment.GetName()))
 	deployment := &appsv1.Deployment{}
 	Eventually(func() bool {
+		//TODO: Delete later
 		key := client.ObjectKey{
 			Namespace: input.Deployment.GetNamespace(),
 			Name:      input.Deployment.GetName(),
@@ -67,6 +77,37 @@ func WaitForDeploymentsAvailable(ctx context.Context, input WaitForDeploymentsAv
 		return false
 
 	}, intervals...).Should(BeTrue(), func() string { return DescribeFailedDeployment(input, deployment) })
+}
+
+type WaitForDeploymentsAvailableClientsetInput struct {
+	ClientSet                           *kubernetes.Clientset
+	Deployment                          *appsv1.Deployment
+	WaitForDeploymentsAvailableInterval []interface{}
+}
+
+func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClientsetInput) {
+	By(fmt.Sprintf("Waiting for deployment %s/%s to be available", input.Deployment.GetNamespace(), input.Deployment.GetName()))
+	log.Logf("Last time:  wait deployment interval: %+v", input.WaitForDeploymentsAvailableInterval)
+	Eventually(func() bool {
+		//TODO: Delete later
+		// key := client.ObjectKey{
+		// 	Namespace: input.Deployment.GetNamespace(),
+		// 	Name:      input.Deployment.GetName(),
+		// }
+		getOpts := metav1.GetOptions{}
+		deployment, err := input.ClientSet.AppsV1().Deployments(input.Deployment.GetNamespace()).Get(input.Deployment.GetName(), getOpts)
+		// if err := input.Getter.Get(ctx, key, deployment); err != nil {
+		if err != nil {
+			return false
+		}
+		for _, c := range deployment.Status.Conditions {
+			if c.Type == appsv1.DeploymentAvailable && c.Status == corev1.ConditionTrue {
+				return true
+			}
+		}
+		return false
+
+	}, input.WaitForDeploymentsAvailableInterval...).Should(BeTrue())
 }
 
 // DescribeFailedDeployment returns detailed output to help debug a deployment failure in e2e.
@@ -246,4 +287,141 @@ func WaitForDNSUpgrade(ctx context.Context, input WaitForDNSUpgradeInput, interv
 		}
 		return false, nil
 	}, intervals...).Should(BeTrue())
+}
+
+type AddUnevictablePodInput struct {
+	ClusterProxy                       ClusterProxy
+	Cluster                            *clusterv1.Cluster
+	MachineDeployments                 []*clusterv1.MachineDeployment
+	WaitForDeploymentAvailableInterval []interface{}
+}
+
+func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
+	// workloadCluster := input.ClusterProxy.GetWorkloadCluster(context.TODO(), input.Cluster.Namespace, input.Cluster.Name)
+	// workloadClient := workloadCluster.GetClient()
+	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
+	log.Logf("Cluster name: %q", input.Cluster.Name)
+	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
+	//TODO: Delete comment
+	workloadClient, err := kubernetes.NewForConfig(restConfig)
+	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
+
+	// workloadClient := input.ClusterProxy.GetClientSet() ---> This is the current client
+
+	// if err != nil {
+	// 	logger.Error(err, "Error creating a remote client while deleting Machine, won't retry")
+	// 	return nil
+	// }
+
+	workloadDeployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "unevictable-pods",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: pointer.Int32Ptr(10),
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nonstop",
+				},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{
+						"app": "nonstop",
+					},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "web",
+							Image: "nginx:1.12",
+							Ports: []corev1.ContainerPort{
+								{
+									Name:          "http",
+									Protocol:      corev1.ProtocolTCP,
+									ContainerPort: 80,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	budget := &v1beta1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: "policy/v1beta1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "unevictable-pods",
+			Namespace: "default",
+		},
+		Spec: v1beta1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app": "nonstop",
+				},
+			},
+			MaxUnavailable: &intstr.IntOrString{
+				Type:   intstr.Int,
+				IntVal: 1,
+				StrVal: "1",
+			},
+		},
+	}
+
+	AddDeploymentToWorkloadCluster(ctx, AddDeploymentToWorkloadClusterInput{
+		// Creator:    workloadClient,
+		Namespace:  "default",
+		ClientSet:  workloadClient,
+		Deployment: workloadDeployment,
+	})
+
+	AddPodDisruptionBudget(ctx, AddPodDisruptionBudgetInput{
+		// Creator: workloadClient,
+		Namespace: "default",
+		ClientSet: workloadClient,
+		Budget:    budget,
+	})
+
+	WaitForDeploymentsAvailableClientset(WaitForDeploymentsAvailableClientsetInput{
+		ClientSet:                           workloadClient,
+		Deployment:                          workloadDeployment,
+		WaitForDeploymentsAvailableInterval: input.WaitForDeploymentAvailableInterval,
+	})
+}
+
+type AddDeploymentToWorkloadClusterInput struct {
+	// Creator    Creator
+	ClientSet  *kubernetes.Clientset
+	Deployment *appsv1.Deployment
+	Namespace  string
+}
+
+func AddDeploymentToWorkloadCluster(ctx context.Context, input AddDeploymentToWorkloadClusterInput) {
+	// err := input.Creator.Create(ctx, input.Deployment)
+	deployment, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(input.Deployment)
+	Expect(deployment).NotTo(BeNil())
+	Expect(err).To(BeNil(), "nonstop pods need to be successfully deployed")
+	//TODO: need to delete this
+	_ = ctx
+}
+
+type AddPodDisruptionBudgetInput struct {
+	// Creator Creator
+	ClientSet *kubernetes.Clientset
+	Budget    *v1beta1.PodDisruptionBudget
+	Namespace string
+}
+
+func AddPodDisruptionBudget(ctx context.Context, input AddPodDisruptionBudgetInput) {
+	// err := input.Creator.Create(ctx, input.Budget)
+	budget, err := input.ClientSet.PolicyV1beta1().PodDisruptionBudgets(input.Namespace).Create(input.Budget)
+	Expect(budget).NotTo(BeNil())
+	Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
+	// Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
+	_ = ctx
+
 }
