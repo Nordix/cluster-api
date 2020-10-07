@@ -196,6 +196,7 @@ func MatchesKCPConfiguration(infraConfigs map[string]*unstructured.Unstructured,
 		MatchesKubernetesVersion(kcp.Spec.Version),
 		MatchesKubeadmBootstrapConfig(machineConfigs, kcp),
 		MatchesTemplateClonedFrom(infraConfigs, kcp),
+		MatchesNodeDrainTimeOut(kcp.Spec.NodeDrainTimeout),
 	)
 }
 
@@ -239,6 +240,23 @@ func MatchesKubernetesVersion(kubernetesVersion string) Func {
 			return false
 		}
 		return *machine.Spec.Version == kubernetesVersion
+	}
+}
+
+// MatchesKubernetesVersion returns a filter to find all machines that match a given Kubernetes version.
+func MatchesNodeDrainTimeOut(NodeDrainTimeout *metav1.Duration) Func {
+	return func(machine *clusterv1.Machine) bool {
+		if machine == nil {
+			return false
+		}
+
+		if NodeDrainTimeout == nil {
+			return true
+		}
+		if machine.Spec.NodeDrainTimeout == nil {
+			return false
+		}
+		return machine.Spec.NodeDrainTimeout.Seconds() == NodeDrainTimeout.Seconds()
 	}
 }
 
