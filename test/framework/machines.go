@@ -46,7 +46,7 @@ func UpdateNodeDrainTimeoutInMachineDeployment(ctx context.Context, input Update
 	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling UpdateNodeDrainTimeoutInMachineDeployment")
 	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling UpdateNodeDrainTimeoutInMachineDeployment")
 	Expect(input.MachineDeployments).ToNot(BeEmpty(), "Invalid argument. input.MachineDeployments can't be empty when calling UpdateNodeDrainTimeoutInMachineDeployment")
-	Expect(input.NodeDrainTimeout).ToNot(BeNil(), "The NodeDrainTimeout agrument needs to be not nil in UpdateNodeDrainTimeoutInMachineDeployment")
+	Expect(input.NodeDrainTimeout).ToNot(BeNil(), "The NodeDrainTimeout input needs to be not nil in UpdateNodeDrainTimeoutInMachineDeployment")
 
 	mgmtClient := input.ClusterProxy.GetClient()
 	for _, md := range input.MachineDeployments {

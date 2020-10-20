@@ -184,8 +184,8 @@ func durationMaker(input durationMakerInput) *metav1.Duration {
 
 // convert from duration to string --> to interval
 func convertDurationToInterval(duration *metav1.Duration, delayRate int) []interface{} {
-	minIntervalDuration := time.Duration(duration.Duration)
-	maxIntervalDuration := time.Duration((duration.Duration + time.Minute*2) * time.Duration(delayRate))
+	minIntervalDuration := duration.Duration
+	maxIntervalDuration := (duration.Duration + time.Minute*2) * time.Duration(delayRate)
 	intervals := make([]interface{}, 0, 2)
 	intervals = append(intervals, maxIntervalDuration.String(), minIntervalDuration.String())
 	return intervals

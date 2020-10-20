@@ -112,14 +112,14 @@ func WaitForKubeadmControlPlaneMachinesToExist(ctx context.Context, input WaitFo
 	}, intervals...).Should(Equal(int(*input.ControlPlane.Spec.Replicas)))
 }
 
-// WaitForKubeadmControlPlaneMachinesToExistInput is the input for WaitForKubeadmControlPlaneMachinesToExist.
+// WaitForOneKubeadmControlPlaneMachinesToExistInput is the input for WaitForKubeadmControlPlaneMachinesToExist.
 type WaitForOneKubeadmControlPlaneMachineToExistInput struct {
 	Lister       Lister
 	Cluster      *clusterv1.Cluster
 	ControlPlane *controlplanev1.KubeadmControlPlane
 }
 
-// WaitForKubeadmControlPlaneMachineToExist will wait until all control plane machines have node refs.
+// WaitForOneKubeadmControlPlaneMachineToExist will wait until all control plane machines have node refs.
 func WaitForOneKubeadmControlPlaneMachineToExist(ctx context.Context, input WaitForOneKubeadmControlPlaneMachineToExistInput, intervals ...interface{}) {
 	Expect(ctx).NotTo(BeNil(), "ctx is required for WaitForOneKubeadmControlPlaneMachineToExist")
 	Expect(input.Lister).ToNot(BeNil(), "Invalid argument. input.Getter can't be nil when calling WaitForOneKubeadmControlPlaneMachineToExist")
@@ -358,6 +358,7 @@ func controlPlaneMachineOptions() []client.ListOption {
 	}
 }
 
+//UpdateControlplaneNodeDrainTimeoutInput is the input for UpdateControlplaneNodeDrainTimeout
 type UpdateControlplaneNodeDrainTimeoutInput struct {
 	Controlplane               *controlplanev1.KubeadmControlPlane
 	NodeDrainTimeout           *metav1.Duration
@@ -367,6 +368,7 @@ type UpdateControlplaneNodeDrainTimeoutInput struct {
 	ScaleUpTo                  int32
 }
 
+//UpdateControlplaneNodeDrainTimeout updates the NodeDrainTimeout field of controlplane machines
 func UpdateControlplaneNodeDrainTimeout(ctx context.Context, input UpdateControlplaneNodeDrainTimeoutInput) {
 	Expect(ctx).NotTo(BeNil())
 	Expect(input.ClusterProxy).ToNot(BeNil())
@@ -388,11 +390,11 @@ func UpdateControlplaneNodeDrainTimeout(ctx context.Context, input UpdateControl
 		ClusterName: input.Cluster.GetName(),
 		Namespace:   input.Cluster.GetNamespace(),
 	})
-	for _, machine := range controlplaneMachines {
-		patchHelper, err := patch.NewHelper(&machine, mgmtClient)
+	for i := range controlplaneMachines {
+		patchHelper, err := patch.NewHelper(&controlplaneMachines[i], mgmtClient)
 		Expect(err).ToNot(HaveOccurred())
-		machine.Spec.NodeDrainTimeout = input.NodeDrainTimeout
-		Expect(patchHelper.Patch(context.TODO(), &machine)).To(Succeed())
+		controlplaneMachines[i].Spec.NodeDrainTimeout = input.NodeDrainTimeout
+		Expect(patchHelper.Patch(context.TODO(), &controlplaneMachines[i])).To(Succeed())
 	}
 
 	log.Logf("Add new controlplane machine to see if new machines get new NodeDrainTimeout value")
@@ -448,9 +450,9 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 	Expect(controlPlaneNodes).ToNot(BeNil())
 	Expect(err).To(BeNil())
 
-	for _, node := range controlPlaneNodes.Items {
+	for i, node := range controlPlaneNodes.Items {
 		node.Spec.Taints = []corev1.Taint{}
-		updatedNode, err := workloadClient.CoreV1().Nodes().Update(ctx, &node, metav1.UpdateOptions{})
+		updatedNode, err := workloadClient.CoreV1().Nodes().Update(ctx, &controlPlaneNodes.Items[i], metav1.UpdateOptions{})
 		Expect(updatedNode.Spec.Taints).To(BeNil())
 		Expect(err).To(BeNil())
 	}
@@ -459,15 +461,15 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 	deployments, err := workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
 	Expect(deployments).ToNot(BeNil())
 	Expect(err).To(BeNil())
-	for _, d := range deployments.Items {
+	for i := range deployments.Items {
 		WaitForDeploymentsAvailableClientset(WaitForDeploymentsAvailableClientsetInput{
 			ClientSet:                           workloadClient,
-			Deployment:                          &d,
+			Deployment:                          &deployments.Items[i],
 			WaitForDeploymentsAvailableInterval: input.WaitForDeploymentAvailableInterval,
 			Context:                             ctx,
 		})
 	}
-	log.Logf("Ensure that all the unevictable pods do not run on only one controlplane node. If that is the case, and if after scaling down, that node is the only one remains, this test will become useless")
+	log.Logf("Ensure that all the unevictable pods do not run on only one controlplane node. If that is the case, and if after scaling down, that node is the only one remains, this test will become useless. Please re-run the test if it happens.")
 	Expect(allPodInOneNodeOnly(ctx, workloadClient)).Should(Equal(false))
 
 }
@@ -498,7 +500,7 @@ type ScaleAndWaitControlPlaneInput struct {
 	WaitForControlPlane []interface{}
 }
 
-// ScaleAndWaitMachineDeployment scales MachineDeployment and waits until all machines have node ref and equal to Replicas.
+// ScaleAndWaitControlPlane scales MachineDeployment and waits until all machines have node ref and equal to Replicas.
 func ScaleAndWaitControlPlane(ctx context.Context, input ScaleAndWaitControlPlaneInput) {
 	Expect(ctx).NotTo(BeNil(), "ctx is required for ScaleAndWaitControlPlane")
 	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling ScaleAndWaitControlPlane")
@@ -536,5 +538,4 @@ func ScaleAndWaitControlPlane(ctx context.Context, input ScaleAndWaitControlPlan
 		}
 		return nodeRefCount, nil
 	}, input.WaitForControlPlane...).Should(Equal(int(*input.ControlPlane.Spec.Replicas)))
-
 }
