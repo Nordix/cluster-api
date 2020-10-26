@@ -29,8 +29,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
+	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
@@ -84,7 +84,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 				ClusterctlConfigPath:     input.ClusterctlConfigPath,
 				KubeconfigPath:           input.BootstrapClusterProxy.GetKubeconfigPath(),
 				InfrastructureProvider:   clusterctl.DefaultInfrastructureProvider,
-				Flavor:                   clusterctl.DefaultFlavor,
+				Flavor:                   "node-drain",
 				Namespace:                namespace.Name,
 				ClusterName:              fmt.Sprintf("%s-%s", specName, util.RandomString(6)),
 				KubernetesVersion:        input.E2EConfig.GetVariable(KubernetesVersion),
@@ -107,13 +107,13 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		})
 		nodeDrainTimeoutMachineDeploymentInterval := convertMachineDeploymentDurationToInterval(nodeDrainTimeoutDuration)
 
-		framework.UpdateNodeDrainTimeoutInMachineDeployment(ctx, framework.UpdateNodeDrainTimeoutInMachineDeploymentInput{
-			ClusterProxy:               input.BootstrapClusterProxy,
-			Cluster:                    cluster,
-			MachineDeployments:         machineDeployments,
-			NodeDrainTimeout:           nodeDrainTimeoutDuration,
-			WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-machine-updated"),
-		})
+		// framework.UpdateNodeDrainTimeoutInMachineDeployment(ctx, framework.UpdateNodeDrainTimeoutInMachineDeploymentInput{
+		// 	ClusterProxy:               input.BootstrapClusterProxy,
+		// 	Cluster:                    cluster,
+		// 	MachineDeployments:         machineDeployments,
+		// 	NodeDrainTimeout:           nodeDrainTimeoutDuration,
+		// 	WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-machine-updated"),
+		// })
 
 		By("Add a deployment and podDisruptionBudget to the workload cluster. The deployed pods cannot be evicted in the node draining process.")
 		framework.AddUnevictablePod(ctx, framework.AddUnevictablePodInput{
@@ -134,16 +134,16 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 			})
 		}
 
-		By("Update nodeDrainTimeout field of the existing and new controlplane machines.")
+		// By("Update nodeDrainTimeout field of the existing and new controlplane machines.")
 		numScaledUpControlPlane := 3
-		framework.UpdateControlplaneNodeDrainTimeout(ctx, framework.UpdateControlplaneNodeDrainTimeoutInput{
-			Controlplane:               controlplane,
-			NodeDrainTimeout:           nodeDrainTimeoutDuration,
-			ClusterProxy:               input.BootstrapClusterProxy,
-			Cluster:                    cluster,
-			ScaleUpTo:                  int32(numScaledUpControlPlane),
-			WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-controlplane-updated"),
-		})
+		// framework.UpdateControlplaneNodeDrainTimeout(ctx, framework.UpdateControlplaneNodeDrainTimeoutInput{
+		// 	Controlplane:               controlplane,
+		// 	NodeDrainTimeout:           nodeDrainTimeoutDuration,
+		// 	ClusterProxy:               input.BootstrapClusterProxy,
+		// 	Cluster:                    cluster,
+		// 	ScaleUpTo:                  int32(numScaledUpControlPlane),
+		// 	WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-controlplane-updated"),
+		// })
 		By("Deploy workload on the master node. The workload is actually the pods that we deployed above.")
 		framework.DeployWorkloadOnControlplaneNode(ctx, framework.DeployWorkloadOnControlplaneNodeInput{
 
