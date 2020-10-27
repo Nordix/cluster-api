@@ -18,9 +18,11 @@ package framework
 
 import (
 	"context"
+	"strconv"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -427,8 +429,6 @@ type DeployWorkloadOnControlplaneNodeInput struct {
 }
 
 func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadOnControlplaneNodeInput) {
-	// tain node
-	// workload client
 	Expect(input.ClusterProxy).NotTo(BeNil())
 	Expect(input.Cluster).NotTo(BeNil())
 	Expect(input.WaitForDeploymentAvailableInterval).NotTo(BeNil())
@@ -438,27 +438,39 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 	workloadClient, err := kubernetes.NewForConfig(restConfig)
 	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
 
-	log.Logf("Untaint the controlplane nodes")
+	log.Logf("Add NodeSelector to pods")
+	deployments, err := workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
+	Expect(err).To(BeNil())
+	for i, d := range deployments.Items {
+		d.Spec.Template.Labels["machine"] = strconv.Itoa(i + 1)
+		updatedDeployment, err := workloadClient.AppsV1().Deployments("default").Update(ctx, &deployments.Items[i], metav1.UpdateOptions{})
+		Expect(err).To(BeNil())
+		Expect(updatedDeployment.Spec.Template.Labels["machine"]).Should(Equal(strconv.Itoa(i + 1)))
+	}
+
+	log.Logf("Untaint and add labels to the controlplane nodes")
 	labelMap := map[string]string{
 		"node-role.kubernetes.io/master": "",
 	}
 	listOptions := metav1.ListOptions{
 		LabelSelector: labels.SelectorFromSet(labelMap).String(),
 	}
-
 	controlPlaneNodes, err := workloadClient.CoreV1().Nodes().List(ctx, listOptions)
 	Expect(controlPlaneNodes).ToNot(BeNil())
 	Expect(err).To(BeNil())
-
 	for i, node := range controlPlaneNodes.Items {
+		// Untaint the nodes
 		node.Spec.Taints = []corev1.Taint{}
+		// Add label to the nodes
+		node.Labels["machine"] = strconv.Itoa(i + 1)
 		updatedNode, err := workloadClient.CoreV1().Nodes().Update(ctx, &controlPlaneNodes.Items[i], metav1.UpdateOptions{})
-		Expect(updatedNode.Spec.Taints).To(BeNil())
 		Expect(err).To(BeNil())
+		Expect(updatedNode.Labels["machine"]).Should(Equal(strconv.Itoa(i + 1)))
+		Expect(updatedNode.Spec.Taints).To(BeNil())
 	}
 
 	log.Logf("Wait for the unevictable pods redeployed into the controlplane nodes")
-	deployments, err := workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
+	deployments, err = workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
 	Expect(deployments).ToNot(BeNil())
 	Expect(err).To(BeNil())
 	for i := range deployments.Items {

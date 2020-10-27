@@ -73,7 +73,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 
 	})
 
-	It("Should forcefully remove a node if it is failing to drain in time", func() {
+	It("A note should be forcefully removed if it cannot be drained in time", func() {
 
 		By("Creating a workload cluster")
 
@@ -89,7 +89,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 				Namespace:                namespace.Name,
 				ClusterName:              fmt.Sprintf("%s-%s", specName, util.RandomString(6)),
 				KubernetesVersion:        input.E2EConfig.GetVariable(KubernetesVersion),
-				ControlPlaneMachineCount: pointer.Int64Ptr(1),
+				ControlPlaneMachineCount: pointer.Int64Ptr(3),
 				WorkerMachineCount:       pointer.Int64Ptr(1),
 			},
 			WaitForClusterIntervals:      input.E2EConfig.GetIntervals(specName, "wait-cluster"),
@@ -108,6 +108,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		})
 		nodeDrainTimeoutMachineDeploymentInterval := convertMachineDeploymentDurationToInterval(nodeDrainTimeoutDuration)
 
+		//TODO: Delete the implemetation as well
 		// framework.UpdateNodeDrainTimeoutInMachineDeployment(ctx, framework.UpdateNodeDrainTimeoutInMachineDeploymentInput{
 		// 	ClusterProxy:               input.BootstrapClusterProxy,
 		// 	Cluster:                    cluster,
@@ -117,7 +118,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		// })
 
 		By("Add a deployment and podDisruptionBudget to the workload cluster. The deployed pods cannot be evicted in the node draining process.")
-		framework.AddUnevictablePod(ctx, framework.AddUnevictablePodInput{
+		framework.DeployUnevictablePod(ctx, framework.DeployUnevictablePodInput{
 			ClusterProxy:                       input.BootstrapClusterProxy,
 			Cluster:                            cluster,
 			MachineDeployments:                 machineDeployments,
@@ -137,6 +138,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 
 		// By("Update nodeDrainTimeout field of the existing and new controlplane machines.")
 		numScaledUpControlPlane := 3
+		//TODO: Delete this and the implemetation
 		// framework.UpdateControlplaneNodeDrainTimeout(ctx, framework.UpdateControlplaneNodeDrainTimeoutInput{
 		// 	Controlplane:               controlplane,
 		// 	NodeDrainTimeout:           nodeDrainTimeoutDuration,

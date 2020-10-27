@@ -25,6 +25,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -82,6 +83,7 @@ type WaitForDeploymentsAvailableClientsetInput struct {
 	Deployment                          *appsv1.Deployment
 	WaitForDeploymentsAvailableInterval []interface{}
 	Context                             context.Context
+	Replicas                            int
 }
 
 func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClientsetInput) {
@@ -90,17 +92,21 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 
 	Eventually(func() bool {
 		getOpts := metav1.GetOptions{}
-		deployment, err := input.ClientSet.AppsV1().Deployments(input.Deployment.GetNamespace()).Get(input.Context, input.Deployment.GetName(), getOpts)
-		if err != nil {
-			return false
-		}
-		for _, c := range deployment.Status.Conditions {
-			if c.Type == appsv1.DeploymentAvailable && c.Status == corev1.ConditionTrue {
-				return true
+		d := input.Deployment
+		originalName := d.ObjectMeta.Name
+		for i := 0; i < input.Replicas; i++ {
+			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
+			deployment, err := input.ClientSet.AppsV1().Deployments(d.GetNamespace()).Get(input.Context, d.GetName(), getOpts)
+			if err != nil {
+				return false
+			}
+			for _, c := range deployment.Status.Conditions {
+				if c.Type == appsv1.DeploymentAvailable && c.Status != corev1.ConditionTrue {
+					return false
+				}
 			}
 		}
-		return false
-
+		return true
 	}, input.WaitForDeploymentsAvailableInterval...).Should(BeTrue())
 }
 
@@ -283,20 +289,20 @@ func WaitForDNSUpgrade(ctx context.Context, input WaitForDNSUpgradeInput, interv
 	}, intervals...).Should(BeTrue())
 }
 
-type AddUnevictablePodInput struct {
+type DeployUnevictablePodInput struct {
 	ClusterProxy                       ClusterProxy
 	Cluster                            *clusterv1.Cluster
 	MachineDeployments                 []*clusterv1.MachineDeployment
 	WaitForDeploymentAvailableInterval []interface{}
 }
 
-func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
+func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) {
 	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
 	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
 	workloadClient, err := kubernetes.NewForConfig(restConfig)
 	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
 
-	workloadDeployment := &appsv1.Deployment{
+	workloadDeploymentTemplate := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "unevictable-pods",
 			Namespace: "default",
@@ -332,6 +338,14 @@ func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
 			},
 		},
 	}
+	//TODO: Delete latter
+	// var workloadDeployments []*appsv1.Deployment
+	// for i := 0; i < 3; i++ {
+	// 	workloadDeployment := workloadDeploymentTemplate.DeepCopy()
+	// 	workloadDeployment.ObjectMeta.Name += strconv.Itoa(i + 1) // make a small difference in name of these deployments
+	// 	workloadDeployments := append(workloadDeployments, workloadDeployment)
+
+	// }
 	budget := &v1beta1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -354,12 +368,17 @@ func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
 			},
 		},
 	}
+	//TODO: delete
+	// for i:=0; i<3; i++ {
+
+	// }
 
 	AddDeploymentToWorkloadCluster(ctx, AddDeploymentToWorkloadClusterInput{
 		// Creator:    workloadClient,
 		Namespace:  "default",
 		ClientSet:  workloadClient,
-		Deployment: workloadDeployment,
+		Deployment: workloadDeploymentTemplate,
+		Replicas:   3,
 	})
 
 	AddPodDisruptionBudget(ctx, AddPodDisruptionBudgetInput{
@@ -371,9 +390,10 @@ func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
 
 	WaitForDeploymentsAvailableClientset(WaitForDeploymentsAvailableClientsetInput{
 		ClientSet:                           workloadClient,
-		Deployment:                          workloadDeployment,
+		Deployment:                          workloadDeploymentTemplate,
 		WaitForDeploymentsAvailableInterval: input.WaitForDeploymentAvailableInterval,
 		Context:                             ctx,
+		Replicas:                            3,
 	})
 }
 
@@ -382,13 +402,18 @@ type AddDeploymentToWorkloadClusterInput struct {
 	ClientSet  *kubernetes.Clientset
 	Deployment *appsv1.Deployment
 	Namespace  string
+	Replicas   int
 }
 
 func AddDeploymentToWorkloadCluster(ctx context.Context, input AddDeploymentToWorkloadClusterInput) {
-	// err := input.Creator.Create(ctx, input.Deployment)
-	deployment, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(ctx, input.Deployment, metav1.CreateOptions{})
-	Expect(deployment).NotTo(BeNil())
-	Expect(err).To(BeNil(), "nonstop pods need to be successfully deployed")
+	originalName := input.Deployment.ObjectMeta.Name
+	d := input.Deployment
+	for i := 0; i < input.Replicas; i++ {
+		d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
+		result, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(ctx, d, metav1.CreateOptions{})
+		Expect(result).NotTo(BeNil())
+		Expect(err).To(BeNil(), "nonstop pods need to be successfully deployed")
+	}
 }
 
 type AddPodDisruptionBudgetInput struct {

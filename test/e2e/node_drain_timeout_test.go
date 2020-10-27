@@ -24,7 +24,7 @@ import (
 	. "github.com/onsi/ginkgo"
 )
 
-var _ = Describe("When a node cannot be drained in time and need to be removed forcefully", func() {
+var _ = Describe("When testing node drain timeout", func() {
 
 	NodeDrainTimeoutSpec(context.TODO(), func() NodeDrainTimeoutSpecInput {
 		return NodeDrainTimeoutSpecInput{
