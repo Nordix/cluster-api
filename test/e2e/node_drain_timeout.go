@@ -29,8 +29,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
-	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha4"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
 	"sigs.k8s.io/cluster-api/util"
@@ -80,11 +80,12 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		applyClusterTemplateResult := clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
 			ClusterProxy: input.BootstrapClusterProxy,
 			ConfigCluster: clusterctl.ConfigClusterInput{
-				LogFolder:                filepath.Join(input.ArtifactFolder, "clusters", input.BootstrapClusterProxy.GetName()),
-				ClusterctlConfigPath:     input.ClusterctlConfigPath,
-				KubeconfigPath:           input.BootstrapClusterProxy.GetKubeconfigPath(),
-				InfrastructureProvider:   clusterctl.DefaultInfrastructureProvider,
-				Flavor:                   "node-drain",
+				LogFolder:              filepath.Join(input.ArtifactFolder, "clusters", input.BootstrapClusterProxy.GetName()),
+				ClusterctlConfigPath:   input.ClusterctlConfigPath,
+				KubeconfigPath:         input.BootstrapClusterProxy.GetKubeconfigPath(),
+				InfrastructureProvider: clusterctl.DefaultInfrastructureProvider,
+				Flavor:                 "node-drain",
+				// Flavor:                   clusterctl.DefaultFlavor,
 				Namespace:                namespace.Name,
 				ClusterName:              fmt.Sprintf("%s-%s", specName, util.RandomString(6)),
 				KubernetesVersion:        input.E2EConfig.GetVariable(KubernetesVersion),
