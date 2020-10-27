@@ -100,8 +100,7 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		controlplane = applyClusterTemplateResult.ControlPlane
 		machineDeployments = applyClusterTemplateResult.MachineDeployments
 
-		By("Update the nodeDrainTimeout field of the machinedeployment and wait for all machines to be updated")
-
+		//TODO: Delete here
 		nodeDrainTimeoutSecond := 60
 		nodeDrainTimeoutDuration := durationMaker(durationMakerInput{
 			second: float64(nodeDrainTimeoutSecond),

@@ -93,7 +93,7 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 	Eventually(func() bool {
 		getOpts := metav1.GetOptions{}
 		d := input.Deployment
-		originalName := d.ObjectMeta.Name
+		originalName := d.GetName()
 		for i := 0; i < input.Replicas; i++ {
 			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
 			deployment, err := input.ClientSet.AppsV1().Deployments(d.GetNamespace()).Get(input.Context, d.GetName(), getOpts)
@@ -308,7 +308,7 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 			Namespace: "default",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(10),
+			Replicas: pointer.Int32Ptr(4),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "nonstop",
