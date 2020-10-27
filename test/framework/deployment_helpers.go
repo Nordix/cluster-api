@@ -97,10 +97,14 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 		for i := 0; i < input.Replicas; i++ {
 			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
 			deployment, err := input.ClientSet.AppsV1().Deployments(d.GetNamespace()).Get(input.Context, d.GetName(), getOpts)
+			//TODO: delete below
+			Expect(err).To(BeNil())
 			if err != nil {
 				return false
 			}
+			log.Logf("Deployment: %v", deployment)
 			for _, c := range deployment.Status.Conditions {
+				log.Logf("Type: %v", c)
 				if c.Type == appsv1.DeploymentAvailable && c.Status != corev1.ConditionTrue {
 					return false
 				}
