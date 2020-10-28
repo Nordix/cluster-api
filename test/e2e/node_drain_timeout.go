@@ -151,17 +151,6 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 	})
 }
 
-type durationMakerInput struct {
-	hour   float64
-	minute float64
-	second float64
-}
-
-func durationMaker(input durationMakerInput) *metav1.Duration {
-	return &metav1.Duration{Duration: time.Second*time.Duration(input.second) + time.Minute*time.Duration(input.minute) + time.Hour*time.Duration(input.hour)}
-}
-
-// convert from duration to string --> to interval
 func convertDurationToInterval(duration *metav1.Duration, delayRate int) []interface{} {
 	minIntervalDuration := duration.Duration
 	maxIntervalDuration := (duration.Duration + time.Minute*2) * time.Duration(delayRate)
