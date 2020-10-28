@@ -441,8 +441,8 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 	log.Logf("Add NodeSelector to pods")
 	deployments, err := workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
 	Expect(err).To(BeNil())
-	for i, d := range deployments.Items {
-		d.Spec.Template.Labels["machine"] = strconv.Itoa(i + 1)
+	for i := range deployments.Items {
+		deployments.Items[i].Spec.Template.Labels["machine"] = strconv.Itoa(i + 1)
 		updatedDeployment, err := workloadClient.AppsV1().Deployments("default").Update(ctx, &deployments.Items[i], metav1.UpdateOptions{})
 		Expect(err).To(BeNil())
 		Expect(updatedDeployment.Spec.Template.Labels["machine"]).Should(Equal(strconv.Itoa(i + 1)))
@@ -458,14 +458,14 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 	controlPlaneNodes, err := workloadClient.CoreV1().Nodes().List(ctx, listOptions)
 	Expect(controlPlaneNodes).ToNot(BeNil())
 	Expect(err).To(BeNil())
-	for i, node := range controlPlaneNodes.Items {
+	for i := range controlPlaneNodes.Items {
 		// Untaint the nodes
-		node.Spec.Taints = []corev1.Taint{}
+		controlPlaneNodes.Items[i].Spec.Taints = []corev1.Taint{}
 		// Add label to the nodes
-		node.Labels["machine"] = strconv.Itoa(i + 1)
+		controlPlaneNodes.Items[i].Labels["machine"] = strconv.Itoa(i + 1)
 		updatedNode, err := workloadClient.CoreV1().Nodes().Update(ctx, &controlPlaneNodes.Items[i], metav1.UpdateOptions{})
 		Expect(err).To(BeNil())
-		Expect(updatedNode.Labels["machine"]).Should(Equal(strconv.Itoa(i + 1)))
+		Expect(updatedNode.Labels["machine"]).To(Equal(strconv.Itoa(i + 1)))
 		Expect(updatedNode.Spec.Taints).To(BeNil())
 	}
 
