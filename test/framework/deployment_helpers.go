@@ -92,7 +92,7 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 
 	Eventually(func() bool {
 		getOpts := metav1.GetOptions{}
-		d := input.Deployment
+		d := input.Deployment.DeepCopy()
 		originalName := d.GetName()
 		for i := 0; i < input.Replicas; i++ {
 			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
@@ -378,7 +378,6 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 	// }
 
 	AddDeploymentToWorkloadCluster(ctx, AddDeploymentToWorkloadClusterInput{
-		// Creator:    workloadClient,
 		Namespace:  "default",
 		ClientSet:  workloadClient,
 		Deployment: workloadDeploymentTemplate,
@@ -411,7 +410,7 @@ type AddDeploymentToWorkloadClusterInput struct {
 
 func AddDeploymentToWorkloadCluster(ctx context.Context, input AddDeploymentToWorkloadClusterInput) {
 	originalName := input.Deployment.ObjectMeta.Name
-	d := input.Deployment
+	d := input.Deployment.DeepCopy()
 	for i := 0; i < input.Replicas; i++ {
 		d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
 		result, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(ctx, d, metav1.CreateOptions{})
