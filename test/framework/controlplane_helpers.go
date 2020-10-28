@@ -31,10 +31,8 @@ import (
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
-	"sigs.k8s.io/cluster-api/controllers/remote"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/test/framework/internal/log"
-	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -385,7 +383,6 @@ func UpdateControlplaneNodeDrainTimeout(ctx context.Context, input UpdateControl
 	Expect(patchHelper.Patch(context.TODO(), controlplane)).To(Succeed())
 
 	log.Logf("Manually update NodeDrainTimeout for existing controlplane machines")
-	// for all machine: patch
 	controlplaneMachines := GetControlPlaneMachinesByCluster(ctx, GetControlPlaneMachinesByClusterInput{
 
 		Lister:      mgmtClient,
@@ -422,21 +419,13 @@ func UpdateControlplaneNodeDrainTimeout(ctx context.Context, input UpdateControl
 }
 
 type DeployWorkloadOnControlplaneNodeInput struct {
-	ClusterProxy                       ClusterProxy
-	Cluster                            *clusterv1.Cluster
+	WorkloadCluster                    *kubernetes.Clientset
 	WaitForDeploymentAvailableInterval []interface{}
 	ControlPlane                       *controlplanev1.KubeadmControlPlane
 }
 
 func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadOnControlplaneNodeInput) {
-	Expect(input.ClusterProxy).NotTo(BeNil())
-	Expect(input.Cluster).NotTo(BeNil())
-	Expect(input.WaitForDeploymentAvailableInterval).NotTo(BeNil())
-
-	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
-	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
-	workloadClient, err := kubernetes.NewForConfig(restConfig)
-	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
+	workloadClient := input.WorkloadCluster
 
 	log.Logf("Add NodeSelector to pods")
 	deployments, err := workloadClient.AppsV1().Deployments("default").List(ctx, metav1.ListOptions{})
@@ -481,8 +470,8 @@ func DeployWorkloadOnControlplaneNode(ctx context.Context, input DeployWorkloadO
 			Context:                             ctx,
 		})
 	}
-	log.Logf("Ensure that all the unevictable pods do not run on only one controlplane node. If that is the case, and if after scaling down, that node is the only one remains, this test will become useless. Please re-run the test if it happens.")
-	Expect(allPodInOneNodeOnly(ctx, workloadClient)).Should(Equal(false))
+	log.Logf("Ensure that all the unevictable pods do not run on only one controlplane node. If that is the case, and if after scaling down, that node is the only one remains, this test will become useless.")
+	Expect(allPodInOneNodeOnly(ctx, workloadClient)).To(Equal(false))
 
 }
 

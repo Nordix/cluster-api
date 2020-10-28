@@ -42,9 +42,7 @@ import (
 	"k8s.io/utils/pointer"
 
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	"sigs.k8s.io/cluster-api/controllers/remote"
 	"sigs.k8s.io/cluster-api/test/framework/internal/log"
-	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -97,14 +95,10 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 		for i := 0; i < input.Replicas; i++ {
 			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
 			deployment, err := input.ClientSet.AppsV1().Deployments(d.GetNamespace()).Get(input.Context, d.GetName(), getOpts)
-			//TODO: delete below
-			Expect(err).To(BeNil())
 			if err != nil {
 				return false
 			}
-			log.Logf("Deployment: %v", deployment)
 			for _, c := range deployment.Status.Conditions {
-				log.Logf("Type: %v", c)
 				if c.Type == appsv1.DeploymentAvailable && c.Status != corev1.ConditionTrue {
 					return false
 				}
@@ -294,18 +288,13 @@ func WaitForDNSUpgrade(ctx context.Context, input WaitForDNSUpgradeInput, interv
 }
 
 type DeployUnevictablePodInput struct {
-	ClusterProxy                       ClusterProxy
-	Cluster                            *clusterv1.Cluster
+	WorkloadCluster                    *kubernetes.Clientset
 	MachineDeployments                 []*clusterv1.MachineDeployment
 	WaitForDeploymentAvailableInterval []interface{}
 }
 
 func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) {
-	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
-	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
-	workloadClient, err := kubernetes.NewForConfig(restConfig)
-	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
-
+	workloadClient := input.WorkloadCluster
 	workloadDeploymentTemplate := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "unevictable-pods",
@@ -342,14 +331,6 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 			},
 		},
 	}
-	//TODO: Delete latter
-	// var workloadDeployments []*appsv1.Deployment
-	// for i := 0; i < 3; i++ {
-	// 	workloadDeployment := workloadDeploymentTemplate.DeepCopy()
-	// 	workloadDeployment.ObjectMeta.Name += strconv.Itoa(i + 1) // make a small difference in name of these deployments
-	// 	workloadDeployments := append(workloadDeployments, workloadDeployment)
-
-	// }
 	budget := &v1beta1.PodDisruptionBudget{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PodDisruptionBudget",
@@ -372,11 +353,6 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 			},
 		},
 	}
-	//TODO: delete
-	// for i:=0; i<3; i++ {
-
-	// }
-
 	AddDeploymentToWorkloadCluster(ctx, AddDeploymentToWorkloadClusterInput{
 		Namespace:  "default",
 		ClientSet:  workloadClient,
@@ -385,7 +361,6 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 	})
 
 	AddPodDisruptionBudget(ctx, AddPodDisruptionBudgetInput{
-		// Creator: workloadClient,
 		Namespace: "default",
 		ClientSet: workloadClient,
 		Budget:    budget,
@@ -401,7 +376,6 @@ func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) 
 }
 
 type AddDeploymentToWorkloadClusterInput struct {
-	// Creator    Creator
 	ClientSet  *kubernetes.Clientset
 	Deployment *appsv1.Deployment
 	Namespace  string
@@ -420,18 +394,13 @@ func AddDeploymentToWorkloadCluster(ctx context.Context, input AddDeploymentToWo
 }
 
 type AddPodDisruptionBudgetInput struct {
-	// Creator Creator
 	ClientSet *kubernetes.Clientset
 	Budget    *v1beta1.PodDisruptionBudget
 	Namespace string
 }
 
 func AddPodDisruptionBudget(ctx context.Context, input AddPodDisruptionBudgetInput) {
-	// err := input.Creator.Create(ctx, input.Budget)
 	budget, err := input.ClientSet.PolicyV1beta1().PodDisruptionBudgets(input.Namespace).Create(ctx, input.Budget, metav1.CreateOptions{})
 	Expect(budget).NotTo(BeNil())
 	Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
-	// Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
-	_ = ctx
-
 }

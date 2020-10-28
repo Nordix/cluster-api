@@ -28,8 +28,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/pointer"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
+	"sigs.k8s.io/cluster-api/controllers/remote"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha3"
 	"sigs.k8s.io/cluster-api/test/framework"
 	"sigs.k8s.io/cluster-api/test/framework/clusterctl"
@@ -76,20 +78,19 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 	It("A note should be forcefully removed if it cannot be drained in time", func() {
 
 		By("Creating a workload cluster")
-
+		controlPlaneReplicas := 3
 		applyClusterTemplateResult := clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
 			ClusterProxy: input.BootstrapClusterProxy,
 			ConfigCluster: clusterctl.ConfigClusterInput{
-				LogFolder:              filepath.Join(input.ArtifactFolder, "clusters", input.BootstrapClusterProxy.GetName()),
-				ClusterctlConfigPath:   input.ClusterctlConfigPath,
-				KubeconfigPath:         input.BootstrapClusterProxy.GetKubeconfigPath(),
-				InfrastructureProvider: clusterctl.DefaultInfrastructureProvider,
-				Flavor:                 "node-drain",
-				// Flavor:                   clusterctl.DefaultFlavor,
+				LogFolder:                filepath.Join(input.ArtifactFolder, "clusters", input.BootstrapClusterProxy.GetName()),
+				ClusterctlConfigPath:     input.ClusterctlConfigPath,
+				KubeconfigPath:           input.BootstrapClusterProxy.GetKubeconfigPath(),
+				InfrastructureProvider:   clusterctl.DefaultInfrastructureProvider,
+				Flavor:                   "node-drain",
 				Namespace:                namespace.Name,
 				ClusterName:              fmt.Sprintf("%s-%s", specName, util.RandomString(6)),
 				KubernetesVersion:        input.E2EConfig.GetVariable(KubernetesVersion),
-				ControlPlaneMachineCount: pointer.Int64Ptr(3),
+				ControlPlaneMachineCount: pointer.Int64Ptr(int64(controlPlaneReplicas)),
 				WorkerMachineCount:       pointer.Int64Ptr(1),
 			},
 			WaitForClusterIntervals:      input.E2EConfig.GetIntervals(specName, "wait-cluster"),
@@ -100,31 +101,19 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		controlplane = applyClusterTemplateResult.ControlPlane
 		machineDeployments = applyClusterTemplateResult.MachineDeployments
 
-		//TODO: Delete here
-		nodeDrainTimeoutSecond := 60
-		nodeDrainTimeoutDuration := durationMaker(durationMakerInput{
-			second: float64(nodeDrainTimeoutSecond),
-		})
-		nodeDrainTimeoutMachineDeploymentInterval := convertMachineDeploymentDurationToInterval(nodeDrainTimeoutDuration)
-
-		//TODO: Delete the implemetation as well
-		// framework.UpdateNodeDrainTimeoutInMachineDeployment(ctx, framework.UpdateNodeDrainTimeoutInMachineDeploymentInput{
-		// 	ClusterProxy:               input.BootstrapClusterProxy,
-		// 	Cluster:                    cluster,
-		// 	MachineDeployments:         machineDeployments,
-		// 	NodeDrainTimeout:           nodeDrainTimeoutDuration,
-		// 	WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-machine-updated"),
-		// })
-
 		By("Add a deployment and podDisruptionBudget to the workload cluster. The deployed pods cannot be evicted in the node draining process.")
+		restConfig, err := remote.RESTConfig(ctx, input.BootstrapClusterProxy.GetClient(), util.ObjectKey(cluster))
+		Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
+		workloadClient, err := kubernetes.NewForConfig(restConfig)
+		Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
 		framework.DeployUnevictablePod(ctx, framework.DeployUnevictablePodInput{
-			ClusterProxy:                       input.BootstrapClusterProxy,
-			Cluster:                            cluster,
+			WorkloadCluster:                    workloadClient,
 			MachineDeployments:                 machineDeployments,
 			WaitForDeploymentAvailableInterval: input.E2EConfig.GetIntervals(specName, "wait-deployment-available"),
 		})
 
 		By("Scale the machinedeployment down to zero. If we didn't have the NodeDrainTimeout duration, the node drain process would block this operator.")
+		nodeDrainTimeoutMachineDeploymentInterval := convertMachineDeploymentDurationToInterval(machineDeployments[0].Spec.Template.Spec.NodeDrainTimeout)
 		for _, md := range machineDeployments {
 			framework.ScaleAndWaitMachineDeployment(ctx, framework.ScaleAndWaitMachineDeploymentInput{
 				ClusterProxy:              input.BootstrapClusterProxy,
@@ -135,28 +124,16 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 			})
 		}
 
-		// By("Update nodeDrainTimeout field of the existing and new controlplane machines.")
-		numScaledUpControlPlane := 3
-		//TODO: Delete this and the implemetation
-		// framework.UpdateControlplaneNodeDrainTimeout(ctx, framework.UpdateControlplaneNodeDrainTimeoutInput{
-		// 	Controlplane:               controlplane,
-		// 	NodeDrainTimeout:           nodeDrainTimeoutDuration,
-		// 	ClusterProxy:               input.BootstrapClusterProxy,
-		// 	Cluster:                    cluster,
-		// 	ScaleUpTo:                  int32(numScaledUpControlPlane),
-		// 	WaitForMachinesToBeUpdated: input.E2EConfig.GetIntervals(specName, "wait-controlplane-updated"),
-		// })
 		By("Deploy workload on the master node. The workload is actually the pods that we deployed above.")
 		framework.DeployWorkloadOnControlplaneNode(ctx, framework.DeployWorkloadOnControlplaneNodeInput{
-
-			ClusterProxy:                       input.BootstrapClusterProxy,
-			Cluster:                            cluster,
+			WorkloadCluster:                    workloadClient,
 			ControlPlane:                       controlplane,
 			WaitForDeploymentAvailableInterval: input.E2EConfig.GetIntervals(specName, "wait-deployment-available"),
 		})
+
 		By("Scale down the controlplane of the workload cluster and make sure that nodes running workload can be deleted even the draining process is blocked.")
 		// When we scale down the KCP, controlplane machines are by default deleted one by one, so it requires more time.
-		nodeDrainTimeoutKCPInterval := convertKCPDurationToInternal(nodeDrainTimeoutDuration, numScaledUpControlPlane)
+		nodeDrainTimeoutKCPInterval := convertKCPDurationToInternal(controlplane.Spec.NodeDrainTimeout, controlPlaneReplicas)
 		framework.ScaleAndWaitControlPlane(ctx, framework.ScaleAndWaitControlPlaneInput{
 			ClusterProxy:        input.BootstrapClusterProxy,
 			Cluster:             cluster,
