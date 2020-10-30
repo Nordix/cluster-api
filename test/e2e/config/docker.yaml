@@ -71,6 +71,7 @@ providers:
   - sourcePath: "../data/infrastructure-docker/cluster-template-mhc.yaml"
   - sourcePath: "../data/infrastructure-docker/cluster-template-kcp-adoption.yaml"
   - sourcePath: "../data/infrastructure-docker/cluster-template-machine-pool.yaml"
+  - sourcePath: "../data/infrastructure-docker/cluster-template-node-drain.yaml"
 
 variables:
   KUBERNETES_VERSION: "v1.19.1"
