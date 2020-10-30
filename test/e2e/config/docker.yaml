@@ -71,6 +71,7 @@ providers:
   - sourcePath: "../data/infrastructure-docker/cluster-template-mhc.yaml"
   - sourcePath: "../data/infrastructure-docker/cluster-template-kcp-adoption.yaml"
   - sourcePath: "../data/infrastructure-docker/cluster-template-machine-pool.yaml"
+  - sourcePath: "../data/infrastructure-docker/cluster-template-node-drain.yaml"
 
 variables:
   KUBERNETES_VERSION: "v1.19.1"
@@ -85,9 +86,7 @@ variables:
   CNI: "./data/cni/kindnet/kindnet.yaml"
   EXP_CLUSTER_RESOURCE_SET: "true"
   EXP_MACHINE_POOL: "true"
-
-intervals:
-  default/wait-controllers: ["3m", "10s"]
+  NODE_DRAIN_TIMEOUT: "60s"
 
 intervals:
   default/wait-controllers: ["3m", "10s"]

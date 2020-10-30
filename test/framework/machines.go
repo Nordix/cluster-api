@@ -22,50 +22,10 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
-	"sigs.k8s.io/cluster-api/test/framework/internal/log"
 	"sigs.k8s.io/cluster-api/util"
-	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
-
-//UpdateNodeDrainTimeoutInMachineDeploymentInput is the input for UpdateNodeDrainTimeoutInMachineDeployment
-type UpdateNodeDrainTimeoutInMachineDeploymentInput struct {
-	MachineDeployments         []*clusterv1.MachineDeployment
-	NodeDrainTimeout           *metav1.Duration
-	ClusterProxy               ClusterProxy
-	Cluster                    *clusterv1.Cluster
-	WaitForMachinesToBeUpdated []interface{}
-}
-
-//UpdateNodeDrainTimeoutInMachineDeployment updates the nodeDrainTimeout field in the machinedeployment
-//and wiat until all machines are updated
-func UpdateNodeDrainTimeoutInMachineDeployment(ctx context.Context, input UpdateNodeDrainTimeoutInMachineDeploymentInput) {
-	Expect(ctx).NotTo(BeNil(), "ctx is required for UpdateNodeDrainTimeoutInMachineDeployment")
-	Expect(input.ClusterProxy).ToNot(BeNil(), "Invalid argument. input.ClusterProxy can't be nil when calling UpdateNodeDrainTimeoutInMachineDeployment")
-	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling UpdateNodeDrainTimeoutInMachineDeployment")
-	Expect(input.MachineDeployments).ToNot(BeEmpty(), "Invalid argument. input.MachineDeployments can't be empty when calling UpdateNodeDrainTimeoutInMachineDeployment")
-	Expect(input.NodeDrainTimeout).ToNot(BeNil(), "The NodeDrainTimeout agrument needs to be not nil in UpdateNodeDrainTimeoutInMachineDeployment")
-
-	mgmtClient := input.ClusterProxy.GetClient()
-	for _, md := range input.MachineDeployments {
-
-		patchHelper, err := patch.NewHelper(md, mgmtClient)
-		Expect(err).ToNot(HaveOccurred())
-		md.Spec.Template.Spec.NodeDrainTimeout = input.NodeDrainTimeout
-		Expect(patchHelper.Patch(context.TODO(), md)).To(Succeed())
-
-		log.Logf("Waiting for nodeDrainTimeout of machines in MachineDeployment %s/%s to be updated", md.Namespace, md.Name)
-		WaitForNodeDrainTimeoutInMachinesToBeUpdated(ctx, WaitForNodeDrainTimeoutInMachinesToBeUpdatedInput{
-			Lister:            mgmtClient,
-			Cluster:           input.Cluster,
-			MachineDeployment: *md,
-			NodeDrainTimeout:  input.NodeDrainTimeout,
-		}, input.WaitForMachinesToBeUpdated...)
-	}
-
-}
 
 // WaitForClusterMachineNodesRefsInput is the input for WaitForClusterMachineNodesRefs.
 type WaitForClusterMachineNodeRefsInput struct {

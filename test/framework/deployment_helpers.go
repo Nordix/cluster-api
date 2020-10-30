@@ -25,6 +25,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,10 +41,8 @@ import (
 	"k8s.io/api/policy/v1beta1"
 	"k8s.io/utils/pointer"
 
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha3"
-	"sigs.k8s.io/cluster-api/controllers/remote"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/test/framework/internal/log"
-	"sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -82,6 +81,7 @@ type WaitForDeploymentsAvailableClientsetInput struct {
 	Deployment                          *appsv1.Deployment
 	WaitForDeploymentsAvailableInterval []interface{}
 	Context                             context.Context
+	Replicas                            int
 }
 
 func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClientsetInput) {
@@ -90,17 +90,21 @@ func WaitForDeploymentsAvailableClientset(input WaitForDeploymentsAvailableClien
 
 	Eventually(func() bool {
 		getOpts := metav1.GetOptions{}
-		deployment, err := input.ClientSet.AppsV1().Deployments(input.Deployment.GetNamespace()).Get(input.Context, input.Deployment.GetName(), getOpts)
-		if err != nil {
-			return false
-		}
-		for _, c := range deployment.Status.Conditions {
-			if c.Type == appsv1.DeploymentAvailable && c.Status == corev1.ConditionTrue {
-				return true
+		d := input.Deployment.DeepCopy()
+		originalName := d.GetName()
+		for i := 0; i < input.Replicas; i++ {
+			d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
+			deployment, err := input.ClientSet.AppsV1().Deployments(d.GetNamespace()).Get(input.Context, d.GetName(), getOpts)
+			if err != nil {
+				return false
+			}
+			for _, c := range deployment.Status.Conditions {
+				if c.Type == appsv1.DeploymentAvailable && c.Status != corev1.ConditionTrue {
+					return false
+				}
 			}
 		}
-		return false
-
+		return true
 	}, input.WaitForDeploymentsAvailableInterval...).Should(BeTrue())
 }
 
@@ -281,26 +285,21 @@ func WaitForDNSUpgrade(ctx context.Context, input WaitForDNSUpgradeInput, interv
 	}, intervals...).Should(BeTrue())
 }
 
-type AddUnevictablePodInput struct {
-	ClusterProxy                       ClusterProxy
-	Cluster                            *clusterv1.Cluster
+type DeployUnevictablePodInput struct {
+	WorkloadCluster                    *kubernetes.Clientset
 	MachineDeployments                 []*clusterv1.MachineDeployment
 	WaitForDeploymentAvailableInterval []interface{}
 }
 
-func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
-	restConfig, err := remote.RESTConfig(ctx, input.ClusterProxy.GetClient(), util.ObjectKey(input.Cluster))
-	Expect(err).To(BeNil(), "Need a restconfig to create a workload client ")
-	workloadClient, err := kubernetes.NewForConfig(restConfig)
-	Expect(err).To(BeNil(), "Need a workload client to interact to the workload cluster")
-
-	workloadDeployment := &appsv1.Deployment{
+func DeployUnevictablePod(ctx context.Context, input DeployUnevictablePodInput) {
+	workloadClient := input.WorkloadCluster
+	workloadDeploymentTemplate := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "unevictable-pods",
 			Namespace: "default",
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(10),
+			Replicas: pointer.Int32Ptr(4),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: map[string]string{
 					"app": "nonstop",
@@ -352,16 +351,14 @@ func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
 			},
 		},
 	}
-
 	AddDeploymentToWorkloadCluster(ctx, AddDeploymentToWorkloadClusterInput{
-		// Creator:    workloadClient,
 		Namespace:  "default",
 		ClientSet:  workloadClient,
-		Deployment: workloadDeployment,
+		Deployment: workloadDeploymentTemplate,
+		Replicas:   3,
 	})
 
 	AddPodDisruptionBudget(ctx, AddPodDisruptionBudgetInput{
-		// Creator: workloadClient,
 		Namespace: "default",
 		ClientSet: workloadClient,
 		Budget:    budget,
@@ -369,39 +366,39 @@ func AddUnevictablePod(ctx context.Context, input AddUnevictablePodInput) {
 
 	WaitForDeploymentsAvailableClientset(WaitForDeploymentsAvailableClientsetInput{
 		ClientSet:                           workloadClient,
-		Deployment:                          workloadDeployment,
+		Deployment:                          workloadDeploymentTemplate,
 		WaitForDeploymentsAvailableInterval: input.WaitForDeploymentAvailableInterval,
 		Context:                             ctx,
+		Replicas:                            3,
 	})
 }
 
 type AddDeploymentToWorkloadClusterInput struct {
-	// Creator    Creator
 	ClientSet  *kubernetes.Clientset
 	Deployment *appsv1.Deployment
 	Namespace  string
+	Replicas   int
 }
 
 func AddDeploymentToWorkloadCluster(ctx context.Context, input AddDeploymentToWorkloadClusterInput) {
-	// err := input.Creator.Create(ctx, input.Deployment)
-	deployment, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(ctx, input.Deployment, metav1.CreateOptions{})
-	Expect(deployment).NotTo(BeNil())
-	Expect(err).To(BeNil(), "nonstop pods need to be successfully deployed")
+	originalName := input.Deployment.ObjectMeta.Name
+	d := input.Deployment.DeepCopy()
+	for i := 0; i < input.Replicas; i++ {
+		d.ObjectMeta.Name = originalName + strconv.Itoa(i+1)
+		result, err := input.ClientSet.AppsV1().Deployments(input.Namespace).Create(ctx, d, metav1.CreateOptions{})
+		Expect(result).NotTo(BeNil())
+		Expect(err).To(BeNil(), "nonstop pods need to be successfully deployed")
+	}
 }
 
 type AddPodDisruptionBudgetInput struct {
-	// Creator Creator
 	ClientSet *kubernetes.Clientset
 	Budget    *v1beta1.PodDisruptionBudget
 	Namespace string
 }
 
 func AddPodDisruptionBudget(ctx context.Context, input AddPodDisruptionBudgetInput) {
-	// err := input.Creator.Create(ctx, input.Budget)
 	budget, err := input.ClientSet.PolicyV1beta1().PodDisruptionBudgets(input.Namespace).Create(ctx, input.Budget, metav1.CreateOptions{})
 	Expect(budget).NotTo(BeNil())
 	Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
-	// Expect(err).To(BeNil(), "podDisruptionBudget needs to be successfully deployed")
-	_ = ctx
-
 }
