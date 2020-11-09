@@ -47,10 +47,9 @@ type NodeDrainTimeoutSpecInput struct {
 	SkipCleanup           bool
 }
 
-// KCPUpgradeSpec implements a test that verifies KCP to properly upgrade a control plane with 3 machines.
 func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeoutSpecInput) {
 	var (
-		specName           = "node-drain-timeout"
+		specName           = "node-drain"
 		input              NodeDrainTimeoutSpecInput
 		namespace          *corev1.Namespace
 		cancelWatches      context.CancelFunc
@@ -68,15 +67,12 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 		Expect(os.MkdirAll(input.ArtifactFolder, 0755)).To(Succeed(), "Invalid argument. input.ArtifactFolder can't be created for %s spec", specName)
 
 		Expect(input.E2EConfig.GetIntervals(specName, "wait-deployment-available")).ToNot(BeNil())
-		Expect(input.E2EConfig.GetIntervals(specName, "wait-node-drain")).ToNot(BeNil())
 
 		// Setup a Namespace where to host objects for this spec and create a watcher for the namespace events.
 		namespace, cancelWatches = setupSpecNamespace(ctx, specName, input.BootstrapClusterProxy, input.ArtifactFolder)
-
 	})
 
-	It("A note should be forcefully removed if it cannot be drained in time", func() {
-
+	It("A node should be forcefully removed if it cannot be drained in time", func() {
 		By("Creating a workload cluster")
 		controlPlaneReplicas := 3
 		applyClusterTemplateResult := clusterctl.ApplyClusterTemplateAndWait(ctx, clusterctl.ApplyClusterTemplateAndWaitInput{
@@ -152,10 +148,10 @@ func NodeDrainTimeoutSpec(ctx context.Context, inputGetter func() NodeDrainTimeo
 }
 
 func convertDurationToInterval(duration *metav1.Duration, delayRate int) []interface{} {
-	minIntervalDuration := duration.Duration
-	maxIntervalDuration := (duration.Duration + time.Minute*2) * time.Duration(delayRate)
+	pollingInterval := time.Second * 10
+	intervalDuration := (duration.Duration + time.Minute*2) * time.Duration(delayRate)
 	intervals := make([]interface{}, 0, 2)
-	intervals = append(intervals, maxIntervalDuration.String(), minIntervalDuration.String())
+	intervals = append(intervals, intervalDuration.String(), pollingInterval.String())
 	return intervals
 }
 
