@@ -34,6 +34,10 @@ const (
 	// SkipCoreDNSAnnotation annotation explicitly skips reconciling CoreDNS if set
 	SkipCoreDNSAnnotation = "controlplane.cluster.x-k8s.io/skip-coredns"
 
+	// DeleteControlPlaneMachineAnnotation annotation deletes CP machines with delete
+	// machine annotation during the scaling down of KCP
+	DeleteControlPlaneMachineAnnotation = "cluster.x-k8s.io/delete-machine"
+
 	// SkipKubeProxyAnnotation annotation explicitly skips reconciling kube-proxy if set
 	SkipKubeProxyAnnotation = "controlplane.cluster.x-k8s.io/skip-kube-proxy"
 

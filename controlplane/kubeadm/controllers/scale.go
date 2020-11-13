@@ -149,6 +149,12 @@ func (r *KubeadmControlPlaneReconciler) scaleDownControlPlane(
 
 func selectMachineForScaleDown(controlPlane *internal.ControlPlane, outdatedMachines internal.FilterableMachineCollection) (*clusterv1.Machine, error) {
 	machines := controlPlane.Machines
+	listOfMachines := machines.UnsortedList()
+	for _, machine := range listOfMachines {
+		if _, ok := machine.Annotations[controlplanev1.DeleteControlPlaneMachineAnnotation]; ok {
+			return machine, nil
+		}
+	}
 	if outdatedMachines.Len() > 0 {
 		machines = outdatedMachines
 	}

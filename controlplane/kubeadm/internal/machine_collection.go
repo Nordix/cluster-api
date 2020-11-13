@@ -83,7 +83,7 @@ func (s FilterableMachineCollection) SortedByCreationTimestamp() []*clusterv1.Ma
 	return res
 }
 
-// unsortedList returns the slice with contents in random order.
+// UnsortedList returns the slice with contents in random order.
 func (s FilterableMachineCollection) unsortedList() []*clusterv1.Machine {
 	res := make([]*clusterv1.Machine, 0, len(s))
 	for _, value := range s {
@@ -161,4 +161,13 @@ func (s FilterableMachineCollection) Names() []string {
 		names = append(names, m.Name)
 	}
 	return names
+}
+
+// UnsortedList returns the slice with contents in random order.
+func (s FilterableMachineCollection) UnsortedList() []*clusterv1.Machine {
+	res := make([]*clusterv1.Machine, 0, len(s))
+	for _, value := range s {
+		res = append(res, value)
+	}
+	return res
 }
