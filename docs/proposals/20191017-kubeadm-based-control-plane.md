@@ -331,12 +331,17 @@ spec:
 - Allow scale down a control plane with stacked etcd to only odd numbers, as per
   [etcd best practice](https://etcd.io/docs/v3.3.12/faq/#why-an-odd-number-of-cluster-members).
 - However, allow a control plane using an external etcd cluster to scale down to other numbers such as 2 or 4.
-- Scale up operations must not be done in conjunction with:
+- Scale down operations must not be done in conjunction with:
   - Adopting machines
   - Upgrading machines
-- Scale up operations are blocked based on Etcd and control plane health checks.
+- Scale down operations are blocked based on Etcd and control plane health checks.
   - See [Health checks](#Health checks) below.
-- Scale down operations removes the oldest machine in the failure domain that has the most control-plane machines on it 
+- Scale down operations removes the oldest machine in the failure domain that has the most control-plane machines on it
+- Scale down operations can be also triggered by marking specific control plane machine(s) using delete annotation key.
+In order to delete a spefic machine, user have to annotate a machine that needs to be deleted and KCP implements the
+following:
+  - Filters out a machine with delete annotation key
+  - Makes sure to delete the oldest machine first when more than one machine is marked for deletion.
 
 ![controlplane-init-7](images/controlplane/controlplane-init-7.png)
 

@@ -28,6 +28,10 @@ import (
 const (
 	KubeadmControlPlaneFinalizer = "kubeadm.controlplane.cluster.x-k8s.io"
 
+	// DeleteControlPlaneMachineAnnotation annotation deletes Control Plane machines with delete
+	// machine annotation key during the scaling down of KCP
+	DeleteControlPlaneMachineAnnotation = "kubeadm.controlplane.cluster.x-k8s.io/delete-machine"
+
 	// SkipCoreDNSAnnotation annotation explicitly skips reconciling CoreDNS if set
 	SkipCoreDNSAnnotation = "controlplane.cluster.x-k8s.io/skip-coredns"
 
