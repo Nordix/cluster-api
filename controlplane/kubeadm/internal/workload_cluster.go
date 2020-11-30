@@ -54,6 +54,8 @@ var (
 )
 
 // WorkloadCluster defines all behaviors necessary to upgrade kubernetes on a workload cluster
+//
+// TODO: Add a detailed description to each of these method definitions.
 type WorkloadCluster interface {
 	// Basic health and status checks.
 	ClusterStatus(ctx context.Context) (ClusterStatus, error)
@@ -76,7 +78,11 @@ type WorkloadCluster interface {
 	AllowBootstrapTokensToGetNodes(ctx context.Context) error
 
 	// State recovery tasks.
+<<<<<<< HEAD
 	ReconcileEtcdMembers(ctx context.Context) error
+=======
+	ReconcileEtcdMembers(ctx context.Context, nodeNames []string) ([]string, error)
+>>>>>>> 979197c35... :bug: KCP reconcileEtcdMembers should use its own NodeRefs
 }
 
 // Workload defines operations on workload clusters.
@@ -91,7 +97,6 @@ func (w *Workload) getControlPlaneNodes(ctx context.Context) (*corev1.NodeList, 
 	labels := map[string]string{
 		labelNodeRoleControlPlane: "",
 	}
-
 	if err := w.Client.List(ctx, nodes, ctrlclient.MatchingLabels(labels)); err != nil {
 		return nil, err
 	}

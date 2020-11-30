@@ -555,7 +555,8 @@ kind: ClusterStatus`,
 
 	tests := []struct {
 		name                string
-		objs                []runtime.Object
+		objs                []client.Object
+		nodes               []string
 		etcdClientGenerator etcdClientFor
 		expectErr           bool
 		assert              func(*WithT)
@@ -563,8 +564,9 @@ kind: ClusterStatus`,
 		{
 			// the node to be removed is ip-10-0-0-3.ec2.internal since the
 			// other two have nodes
-			name: "successfully removes the etcd member without a node and removes the node from kubeadm config",
-			objs: []runtime.Object{node1.DeepCopy(), node2.DeepCopy(), kubeadmConfig.DeepCopy()},
+			name:  "successfully removes the etcd member without a node and removes the node from kubeadm config",
+			objs:  []client.Object{node1.DeepCopy(), node2.DeepCopy(), kubeadmConfig.DeepCopy()},
+			nodes: []string{node1.Name, node2.Name},
 			etcdClientGenerator: &fakeEtcdClientGenerator{
 				forNodesClient: &etcd.Client{
 					EtcdClient: fakeEtcdClient,
@@ -576,8 +578,9 @@ kind: ClusterStatus`,
 			},
 		},
 		{
-			name: "return error if there aren't enough control plane nodes",
-			objs: []runtime.Object{node1.DeepCopy(), kubeadmConfig.DeepCopy()},
+			name:  "return error if there aren't enough control plane nodes",
+			objs:  []client.Object{node1.DeepCopy(), kubeadmConfig.DeepCopy()},
+			nodes: []string{node1.Name},
 			etcdClientGenerator: &fakeEtcdClientGenerator{
 				forNodesClient: &etcd.Client{
 					EtcdClient: fakeEtcdClient,
@@ -603,7 +606,7 @@ kind: ClusterStatus`,
 				etcdClientGenerator: tt.etcdClientGenerator,
 			}
 			ctx := context.TODO()
-			err := w.ReconcileEtcdMembers(ctx)
+			_, err := w.ReconcileEtcdMembers(ctx, tt.nodes)
 			if tt.expectErr {
 				g.Expect(err).To(HaveOccurred())
 				return
@@ -619,17 +622,21 @@ kind: ClusterStatus`,
 }
 
 type fakeEtcdClientGenerator struct {
-	forNodesClient  *etcd.Client
-	forLeaderClient *etcd.Client
-	forNodesErr     error
-	forLeaderErr    error
+	forNodesClient     *etcd.Client
+	forNodesClientFunc func([]string) (*etcd.Client, error)
+	forLeaderClient    *etcd.Client
+	forNodesErr        error
+	forLeaderErr       error
 }
 
-func (c *fakeEtcdClientGenerator) forNodes(_ context.Context, _ []corev1.Node) (*etcd.Client, error) {
+func (c *fakeEtcdClientGenerator) forNodes(_ context.Context, n []string) (*etcd.Client, error) {
+	if c.forNodesClientFunc != nil {
+		return c.forNodesClientFunc(n)
+	}
 	return c.forNodesClient, c.forNodesErr
 }
 
-func (c *fakeEtcdClientGenerator) forLeader(_ context.Context, _ []corev1.Node) (*etcd.Client, error) {
+func (c *fakeEtcdClientGenerator) forLeader(_ context.Context, _ []string) (*etcd.Client, error) {
 	return c.forLeaderClient, c.forLeaderErr
 }
 
