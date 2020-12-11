@@ -93,9 +93,9 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(
 		return ctrl.Result{}, err
 	}
 
-	if kcp.Spec.RolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
-		ios1, ios0 := getIntValues()
-		if kcp.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable == &ios1 && kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge == &ios0 {
+	if isRollingUpgradeStrategy(kcp) {
+
+		if controlPlaneIsSetToScaleDown(kcp) {
 			// Scale down
 			if *kcp.Spec.Replicas < 3 {
 				logger.Info("Unable to scale down the controlplane")
@@ -126,8 +126,23 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
 }
 
+func controlPlaneIsSetToScaleDown(kcp *controlplanev1.KubeadmControlPlane) bool {
+	ios1, ios0 := getIntValues()
+	if *kcp.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable == ios1 && *kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge == ios0 {
+		return true
+	}
+	return false
+}
+
 func getIntValues() (intstr.IntOrString, intstr.IntOrString) {
 	ios1 := intstr.FromInt(1)
 	ios0 := intstr.FromInt(0)
 	return ios1, ios0
+}
+
+func isRollingUpgradeStrategy(kcp *controlplanev1.KubeadmControlPlane) bool {
+	if kcp.Spec.RolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
+		return true
+	}
+	return false
 }

@@ -82,7 +82,7 @@ type KubeadmControlPlaneSpec struct {
 	// The RolloutStrategy to use to replace control plane machines with
 	// new ones.
 	// +optional
-	RolloutStrategy *RolloutStrategy `json:"strategy,omitempty"`
+	RolloutStrategy *RolloutStrategy `json:"rolloutStrategy,omitempty"`
 }
 
 // RolloutStrategy describes how to replace existing machines
