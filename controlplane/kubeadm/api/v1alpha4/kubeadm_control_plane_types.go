@@ -19,6 +19,7 @@ package v1alpha4
 import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 
 	cabpkv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/api/v1alpha4"
@@ -77,6 +78,50 @@ type KubeadmControlPlaneSpec struct {
 	// NOTE: NodeDrainTimeout is different from `kubectl drain --timeout`
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
+
+	// The RolloutStrategy to use to replace control plane machines with
+	// new ones.
+	// +optional
+	RolloutStrategy *RolloutStrategy `json:"strategy,omitempty"`
+}
+
+// RolloutStrategy describes how to replace existing machines
+// with new ones.
+type RolloutStrategy struct {
+	// Type of rollout. Currently the only supported strategy is
+	// "RollingUpdate".
+	// Default is RollingUpdate.
+	// +optional
+	Type RolloutStrategyType `json:"type,omitempty"`
+
+	// Rolling update config params. Present only if
+	// RolloutStrategyType = RollingUpdate.
+	// +optional
+	RollingUpdate *RollingUpdate `json:"rollingUpdate,omitempty"`
+}
+
+// RollingUpdate is used to control the desired behavior of rolling update.
+type RollingUpdate struct {
+	// The maximum number of control planes that can be unavailable during the rollout.
+	// Value can be an absolute number 0 or 1.
+	// This needs to be 1 if MaxSurge is 0.
+	// Defaults to 0.
+	// Example: when this is set to 1 and MaxSurge is 0, the control planes can be scaled
+	// down one-by-one when the rolling update starts.
+	// Control plane scale down is disabled when desired number of control planes is 1.
+	// Scale down is possible only if desired number of control planes is 3 or more.
+	// +optional
+	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable,omitempty"`
+
+	// The maximum number of control planes that can be scheduled above the
+	// desired number of control planes.
+	// Value can be an absolute number 1 or 0.
+	// This needs to be 1 if MaxUnavailable is 0.
+	// Defaults to 1.
+	// Example: when this is set to 1 and MaxUnavailable is 0, the control plane can be scaled
+	// up immediately when the rolling update starts.
+	// +optional
+	MaxSurge *intstr.IntOrString `json:"maxSurge,omitempty"`
 }
 
 // KubeadmControlPlaneStatus defines the observed state of KubeadmControlPlane.
@@ -153,7 +198,7 @@ type KubeadmControlPlaneStatus struct {
 // +kubebuilder:printcolumn:name="Ready",type=integer,JSONPath=".status.readyReplicas",description="Total number of fully running and ready control plane machines"
 // +kubebuilder:printcolumn:name="Updated",type=integer,JSONPath=".status.updatedReplicas",description="Total number of non-terminated machines targeted by this control plane that have the desired template spec"
 // +kubebuilder:printcolumn:name="Unavailable",type=integer,JSONPath=".status.unavailableReplicas",description="Total number of unavailable machines targeted by this control plane"
-
+// +kubebuilder:printcolumn:name="Rollout Strategy",type=string,priority=1,JSONPath=".spec.rolloutStrategy.type",description="Type of RolloutStrategy"
 // KubeadmControlPlane is the Schema for the KubeadmControlPlane API.
 type KubeadmControlPlane struct {
 	metav1.TypeMeta   `json:",inline"`

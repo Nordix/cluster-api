@@ -1517,6 +1517,29 @@ spec:
                 description: Number of desired machines. Defaults to 1. When stacked etcd is used only odd numbers are permitted, as per [etcd best practice](https://etcd.io/docs/v3.3.12/faq/#why-an-odd-number-of-cluster-members). This is a pointer to distinguish between explicit zero and not specified.
                 format: int32
                 type: integer
+              strategy:
+                description: The RolloutStrategy to use to replace control plane machines with new ones.
+                properties:
+                  rollingUpdate:
+                    description: Rolling update config params. Present only if RolloutStrategyType = RollingUpdate.
+                    properties:
+                      maxSurge:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: 'The maximum number of control planes that can be scheduled above the desired number of control planes. Value can be an absolute number 1 or 0. This needs to be 1 if MaxUnavailable is 0. Defaults to 1. Example: when this is set to 1 and MaxUnavailable is 0, the control plane can be scaled up immediately when the rolling update starts.'
+                        x-kubernetes-int-or-string: true
+                      maxUnavailable:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: 'The maximum number of control planes that can be unavailable during the rollout. Value can be an absolute number 0 or 1. This needs to be 1 if MaxSurge is 0. Defaults to 0. Example: when this is set to 1 and MaxSurge is 0, the control planes can be scaled down one-by-one when the rolling update starts. Control plane scale down is disabled when desired number of control planes is 1. Scale down is possible only if desired number of control planes is 3 or more.'
+                        x-kubernetes-int-or-string: true
+                    type: object
+                  type:
+                    description: Type of rollout. Currently the only supported strategy is "RollingUpdate". Default is RollingUpdate.
+                    type: string
+                type: object
               upgradeAfter:
                 description: UpgradeAfter is a field to indicate an upgrade should be performed after the specified time even if no changes have been made to the KubeadmControlPlane
                 format: date-time

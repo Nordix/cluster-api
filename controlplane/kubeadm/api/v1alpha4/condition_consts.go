@@ -65,6 +65,10 @@ const (
 
 	// ScalingDownReason (Severity=Info) documents a KubeadmControlPlane that is decreasing the number of replicas.
 	ScalingDownReason = "ScalingDown"
+
+	// UnableToScaleDownReason (Severity=Warning) documents a KubeadmControlPlane that is unable to decrease the
+	// number of replicas when RolloutStrategy is set to ScaleDown.
+	UnableToScaleDownReason = "UnableToScaleDown"
 )
 
 const (

@@ -21,10 +21,12 @@ import (
 
 	"github.com/blang/semver"
 	"github.com/pkg/errors"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1alpha4"
 	controlplanev1 "sigs.k8s.io/cluster-api/controlplane/kubeadm/api/v1alpha4"
 	"sigs.k8s.io/cluster-api/controlplane/kubeadm/internal"
 	"sigs.k8s.io/cluster-api/util"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
@@ -91,9 +93,41 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(
 		return ctrl.Result{}, err
 	}
 
+	if kcp.Spec.RolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
+		ios1, ios0 := getIntValues()
+		if kcp.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable == &ios1 && kcp.Spec.RolloutStrategy.RollingUpdate.MaxSurge == &ios0 {
+			// Scale down
+			if *kcp.Spec.Replicas < 3 {
+				logger.Info("Unable to scale down the controlplane")
+				conditions.MarkFalse(kcp, controlplanev1.MachinesSpecUpToDateCondition, controlplanev1.UnableToScaleDownReason, clusterv1.ConditionSeverityWarning, "Unable to scale down the control plane")
+				return ctrl.Result{}, nil
+			}
+
+			if status.Nodes >= *kcp.Spec.Replicas {
+				return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
+			}
+
+			if status.Nodes < *kcp.Spec.Replicas {
+				return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
+			}
+		} else {
+			// Scale up
+			if status.Nodes <= *kcp.Spec.Replicas {
+				return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
+			}
+			return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
+		}
+	}
+
 	if status.Nodes <= *kcp.Spec.Replicas {
 		// scaleUp ensures that we don't continue scaling up while waiting for Machines to have NodeRefs
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
 	}
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
+}
+
+func getIntValues() (intstr.IntOrString, intstr.IntOrString) {
+	ios1 := intstr.FromInt(1)
+	ios0 := intstr.FromInt(0)
+	return ios1, ios0
 }
