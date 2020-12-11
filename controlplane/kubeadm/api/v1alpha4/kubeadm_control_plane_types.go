@@ -25,6 +25,14 @@ import (
 	"sigs.k8s.io/cluster-api/errors"
 )
 
+type RolloutStrategyType string
+
+const (
+	// Replace the old control planes by new one using rolling update
+	// i.e. gradually scale up or down the old control planes and scale up or down the new one.
+	RollingUpdateStrategyType RolloutStrategyType = "RollingUpdate"
+)
+
 const (
 	KubeadmControlPlaneFinalizer = "kubeadm.controlplane.cluster.x-k8s.io"
 
