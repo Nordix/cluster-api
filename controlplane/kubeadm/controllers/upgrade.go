@@ -93,7 +93,7 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(
 		return ctrl.Result{}, err
 	}
 
-	if isRollingUpgradeStrategy(kcp) {
+	if rolloutStrategyIsSet(kcp) && isRollingUpgradeStrategy(kcp) {
 
 		if controlPlaneIsSetToScaleDown(kcp) {
 			// Scale down
@@ -122,8 +122,23 @@ func (r *KubeadmControlPlaneReconciler) upgradeControlPlane(
 	if status.Nodes <= *kcp.Spec.Replicas {
 		// scaleUp ensures that we don't continue scaling up while waiting for Machines to have NodeRefs
 		return r.scaleUpControlPlane(ctx, cluster, kcp, controlPlane)
+
 	}
 	return r.scaleDownControlPlane(ctx, cluster, kcp, controlPlane, machinesRequireUpgrade)
+}
+
+func isRollingUpgradeStrategy(kcp *controlplanev1.KubeadmControlPlane) bool {
+	if kcp.Spec.RolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
+		return true
+	}
+	return false
+}
+
+func rolloutStrategyIsSet(kcp *controlplanev1.KubeadmControlPlane) bool {
+	if kcp.Spec.RolloutStrategy != nil {
+		return true
+	}
+	return false
 }
 
 func controlPlaneIsSetToScaleDown(kcp *controlplanev1.KubeadmControlPlane) bool {
@@ -138,11 +153,4 @@ func getIntValues() (intstr.IntOrString, intstr.IntOrString) {
 	ios1 := intstr.FromInt(1)
 	ios0 := intstr.FromInt(0)
 	return ios1, ios0
-}
-
-func isRollingUpgradeStrategy(kcp *controlplanev1.KubeadmControlPlane) bool {
-	if kcp.Spec.RolloutStrategy.Type == controlplanev1.RollingUpdateStrategyType {
-		return true
-	}
-	return false
 }

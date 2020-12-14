@@ -28,6 +28,7 @@ import (
 	"github.com/pkg/errors"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	kubeadmv1 "sigs.k8s.io/cluster-api/bootstrap/kubeadm/types/v1beta1"
 	"sigs.k8s.io/cluster-api/util"
@@ -63,6 +64,21 @@ func (in *KubeadmControlPlane) Default() {
 
 	if !strings.HasPrefix(in.Spec.Version, "v") {
 		in.Spec.Version = "v" + in.Spec.Version
+	}
+
+	// Default RollingUpdate strategy only if rollout strategy type is RollingUpdate.
+	if in.Spec.RolloutStrategy != nil && in.Spec.RolloutStrategy.Type == RollingUpdateStrategyType {
+		if in.Spec.RolloutStrategy.RollingUpdate == nil {
+			in.Spec.RolloutStrategy.RollingUpdate = &RollingUpdate{}
+		}
+		if in.Spec.RolloutStrategy.RollingUpdate.MaxSurge == nil {
+			ios1 := intstr.FromInt(1)
+			in.Spec.RolloutStrategy.RollingUpdate.MaxSurge = &ios1
+		}
+		if in.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable == nil {
+			ios0 := intstr.FromInt(0)
+			in.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable = &ios0
+		}
 	}
 }
 
@@ -259,6 +275,29 @@ func (in *KubeadmControlPlane) validateCommon() (allErrs field.ErrorList) {
 				field.NewPath("spec", "infrastructureTemplate", "namespace"),
 				in.Spec.InfrastructureTemplate.Namespace,
 				"must match metadata.namespace",
+			),
+		)
+	}
+
+	ios1 := intstr.FromInt(1)
+	ios0 := intstr.FromInt(0)
+
+	if *in.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable == ios1 && *in.Spec.RolloutStrategy.RollingUpdate.MaxSurge != ios0 {
+		allErrs = append(
+			allErrs,
+			field.Required(
+				field.NewPath("spec", "rolloutstrategy", "rollingupdate", "maxunavailable"),
+				"when maxunavailable value=1, maxsurge value=0 is required",
+			),
+		)
+	}
+
+	if *in.Spec.RolloutStrategy.RollingUpdate.MaxSurge == ios1 && *in.Spec.RolloutStrategy.RollingUpdate.MaxUnavailable != ios0 {
+		allErrs = append(
+			allErrs,
+			field.Required(
+				field.NewPath("spec", "rolloutstrategy", "rollingupdate", "maxsurge"),
+				"when maxsurge value=1, maxunavailable value=0 is required",
 			),
 		)
 	}
