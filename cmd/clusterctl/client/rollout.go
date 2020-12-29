@@ -36,6 +36,10 @@ type RolloutOptions struct {
 	// Namespace where the resource(s) live. If unspecified, the namespace name will be inferred
 	// from the current configuration.
 	Namespace string
+
+	// Revision number to rollback to when issuing the undo command.
+	// Revision number of a specific revision when issuing the history command.
+	ToRevision int64
 }
 
 func (c *clusterctlClient) RolloutRestart(options RolloutOptions) error {
@@ -108,6 +112,38 @@ func getResourceTuples(clusterClient cluster.Client, options RolloutOptions) ([]
 		return []util.ResourceTuple{}, err
 	}
 	return tuples, nil
+}
+
+func (c *clusterctlClient) RolloutUndo(options RolloutOptions) error {
+	clusterClient, err := c.clusterClientFactory(ClusterClientFactoryInput{Kubeconfig: options.Kubeconfig})
+	if err != nil {
+		return err
+	}
+
+	// If the option specifying the Namespace is empty, try to detect it.
+	if options.Namespace == "" {
+		currentNamespace, err := clusterClient.Proxy().CurrentNamespace()
+		if err != nil {
+			return err
+		}
+		options.Namespace = currentNamespace
+	}
+
+	if len(options.Resources) == 0 {
+		return fmt.Errorf("required resource not specified")
+	}
+	normalized := normalizeResources(options.Resources)
+	tuples, err := util.ResourceTypeAndNameArgs(normalized...)
+	if err != nil {
+		return err
+	}
+
+	for _, t := range tuples {
+		if err := c.alphaClient.Rollout().ObjectRollbacker(clusterClient.Proxy(), t, options.Namespace, options.ToRevision); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func normalizeResources(input []string) []string {
