@@ -405,6 +405,7 @@ func (u *providerUpgrader) doUpgrade(upgradePlan *UpgradePlan) error {
 		if err := installComponentsAndUpdateInventory(components, u.providerComponents, u.providerInventory); err != nil {
 			return err
 		}
+		time.Sleep(60 * time.Second)
 	}
 
 	// Delete webhook namespace since it's not needed from v1alpha4.
