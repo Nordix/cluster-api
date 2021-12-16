@@ -497,6 +497,10 @@ func (r *KubeadmConfigReconciler) joinWorker(ctx context.Context, scope *Scope) 
 		return res, nil
 	}
 
+	if err := r.insertFailureDomainZoneLabel(ctx, scope); err != nil {
+		return ctrl.Result{}, err
+	}
+
 	kubernetesVersion := scope.ConfigOwner.KubernetesVersion()
 	parsedVersion, err := semver.ParseTolerant(kubernetesVersion)
 	if err != nil {
@@ -754,6 +758,28 @@ func (r *KubeadmConfigReconciler) MachinePoolToBootstrapMapFunc(o client.Object)
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}
 	return result
+}
+
+// insertFailureDomainZoneLabel inserts the well-known label for failure domains (topology.kubernetes.io/zone) in KubeletExtraArgs.
+func (r *KubeadmConfigReconciler) insertFailureDomainZoneLabel(ctx context.Context, scope *Scope) error {
+
+	machine := &clusterv1.Machine{}
+	if err := runtime.DefaultUnstructuredConverter.FromUnstructured(scope.ConfigOwner.Object, machine); err != nil {
+		return errors.Wrapf(err, "cannot convert %s to Machine", scope.ConfigOwner.GetKind())
+	}
+	if machine.Spec.FailureDomain != nil {
+		zoneLabelKey := "topology.kubernetes.io/zone"
+		zoneLabel := zoneLabelKey + "=" + *machine.Spec.FailureDomain
+		labelSet := scope.Config.Spec.JoinConfiguration.NodeRegistration.KubeletExtraArgs["node-labels"]
+		if len(labelSet) == 0 {
+			labelSet = zoneLabel
+		} else {
+			labelSet = labelSet + "," + zoneLabel
+		}
+		scope.Config.Spec.JoinConfiguration.NodeRegistration.KubeletExtraArgs["node-labels"] = labelSet
+		log.Info("Updated kubelet config with failuredomain zone label", "node-labels", labelSet)
+	}
+	return nil
 }
 
 // reconcileDiscovery ensures that config.JoinConfiguration.Discovery is properly set for the joining node.
