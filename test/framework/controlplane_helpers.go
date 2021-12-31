@@ -18,6 +18,8 @@ package framework
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -228,12 +230,23 @@ func DiscoveryAndWaitForControlPlaneInitialized(ctx context.Context, input Disco
 	Expect(input.Lister).ToNot(BeNil(), "Invalid argument. input.Lister can't be nil when calling DiscoveryAndWaitForControlPlaneInitialized")
 	Expect(input.Cluster).ToNot(BeNil(), "Invalid argument. input.Cluster can't be nil when calling DiscoveryAndWaitForControlPlaneInitialized")
 
-	controlPlane := GetKubeadmControlPlaneByCluster(ctx, GetKubeadmControlPlaneByClusterInput{
-		Lister:      input.Lister,
-		ClusterName: input.Cluster.Name,
-		Namespace:   input.Cluster.Namespace,
-	})
-	Expect(controlPlane).ToNot(BeNil())
+	var controlPlane *controlplanev1.KubeadmControlPlane
+	start := time.Now().Unix() * int64(time.Second)
+	fmt.Println("HEEEEEEER")
+	Eventually(func(g Gomega) {
+		controlPlane = GetKubeadmControlPlaneByCluster(ctx, GetKubeadmControlPlaneByClusterInput{
+			Lister:      input.Lister,
+			ClusterName: input.Cluster.Name,
+			Namespace:   input.Cluster.Namespace,
+		})
+		now := time.Now().Unix() * int64(time.Second)
+		diff := now - start
+		if controlPlane == nil {
+			fmt.Println("STOPSTOPSTOP")
+		}
+		fmt.Printf("It has been %d seconds and KCP object is still nil", diff)
+		g.Expect(controlPlane).ToNot(BeNil())
+	}, "10s", "1s").Should(Succeed())
 
 	log.Logf("Waiting for the first control plane machine managed by %s/%s to be provisioned", controlPlane.Namespace, controlPlane.Name)
 	WaitForOneKubeadmControlPlaneMachineToExist(ctx, WaitForOneKubeadmControlPlaneMachineToExistInput{
