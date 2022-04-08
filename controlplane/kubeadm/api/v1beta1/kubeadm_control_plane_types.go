@@ -102,6 +102,11 @@ type KubeadmControlPlaneMachineTemplate struct {
 	// +optional
 	NodeDrainTimeout *metav1.Duration `json:"nodeDrainTimeout,omitempty"`
 
+	// VolumeDetachTimeout is the total amount of time that the controller will spend on waiting for a volume
+	// to be detached. The default value is 0, meaning that the volume can be detached without any time limitations.
+	// +optional
+	VolumeDetachTimeout *metav1.Duration `json:"volumeDetachTimeout,omitempty"`
+
 	// NodeDeletionTimeout defines how long the machine controller will attempt to delete the Node that the Machine
 	// hosts after the Machine is marked for deletion. A duration of 0 will retry deletion indefinitely.
 	// If no value is provided, the default value for this property of the Machine resource will be used.

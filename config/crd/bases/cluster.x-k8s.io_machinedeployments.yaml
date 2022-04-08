@@ -1325,6 +1325,12 @@ spec:
                         description: Version defines the desired Kubernetes version.
                           This field is meant to be optionally used by bootstrap providers.
                         type: string
+                      volumeDetachTimeout:
+                        description: VolumeDetachTimeout is the total amount of time
+                          that the controller will spend on waiting for a volume to
+                          be detached. The default value is 0, meaning that the volume
+                          can be detached without any time limitations.
+                        type: string
                     required:
                     - bootstrap
                     - clusterName

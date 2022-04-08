@@ -97,6 +97,11 @@ func (in *KubeadmControlPlaneMachineTemplate) DeepCopyInto(out *KubeadmControlPl
 		*out = new(v1.Duration)
 		**out = **in
 	}
+	if in.VolumeDetachTimeout != nil {
+		in, out := &in.VolumeDetachTimeout, &out.VolumeDetachTimeout
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	if in.NodeDeletionTimeout != nil {
 		in, out := &in.NodeDeletionTimeout, &out.NodeDeletionTimeout
 		*out = new(v1.Duration)
@@ -240,6 +245,11 @@ func (in *KubeadmControlPlaneTemplateMachineTemplate) DeepCopyInto(out *KubeadmC
 	*out = *in
 	if in.NodeDrainTimeout != nil {
 		in, out := &in.NodeDrainTimeout, &out.NodeDrainTimeout
+		*out = new(v1.Duration)
+		**out = **in
+	}
+	if in.VolumeDetachTimeout != nil {
+		in, out := &in.VolumeDetachTimeout, &out.VolumeDetachTimeout
 		*out = new(v1.Duration)
 		**out = **in
 	}

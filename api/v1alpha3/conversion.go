@@ -98,6 +98,7 @@ func (src *Machine) ConvertTo(dstRaw conversion.Hub) error {
 	}
 
 	dst.Spec.NodeDeletionTimeout = restored.Spec.NodeDeletionTimeout
+	dst.Spec.VolumeDetachTimeout = restored.Spec.VolumeDetachTimeout
 	dst.Status.NodeInfo = restored.Status.NodeInfo
 	return nil
 }
@@ -141,6 +142,7 @@ func (src *MachineSet) ConvertTo(dstRaw conversion.Hub) error {
 		return err
 	}
 	dst.Spec.Template.Spec.NodeDeletionTimeout = restored.Spec.Template.Spec.NodeDeletionTimeout
+	dst.Spec.Template.Spec.VolumeDetachTimeout = restored.Spec.Template.Spec.VolumeDetachTimeout
 	dst.Status.Conditions = restored.Status.Conditions
 	return nil
 }
@@ -195,6 +197,7 @@ func (src *MachineDeployment) ConvertTo(dstRaw conversion.Hub) error {
 	}
 
 	dst.Spec.Template.Spec.NodeDeletionTimeout = restored.Spec.Template.Spec.NodeDeletionTimeout
+	dst.Spec.Template.Spec.VolumeDetachTimeout = restored.Spec.Template.Spec.VolumeDetachTimeout
 	dst.Status.Conditions = restored.Status.Conditions
 	return nil
 }

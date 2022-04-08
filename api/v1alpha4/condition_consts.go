@@ -124,8 +124,9 @@ const (
 	// WaitingExternalHookReason (Severity=Info) provide evidence that we are waiting for an external hook to complete.
 	WaitingExternalHookReason = "WaitingExternalHook"
 
-	// VolumeDetachSucceededCondition reports a machine waiting for volumes to be detached.
-	VolumeDetachSucceededCondition ConditionType = "VolumeDetachSucceeded"
+	// VolumeDetachFinishedCondition reports a machine node volume detachment finished either by waiting for volumes to be
+	// detached or left alone due to volume detach timeout exceeded.
+	VolumeDetachFinishedCondition ConditionType = "VolumeDetachFinished"
 
 	// WaitingForVolumeDetachReason (Severity=Info) provide evidence that a machine node waiting for volumes to be attached.
 	WaitingForVolumeDetachReason = "WaitingForVolumeDetach"

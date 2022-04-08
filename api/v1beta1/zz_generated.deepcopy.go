@@ -1338,6 +1338,11 @@ func (in *MachineSpec) DeepCopyInto(out *MachineSpec) {
 		*out = new(metav1.Duration)
 		**out = **in
 	}
+	if in.VolumeDetachTimeout != nil {
+		in, out := &in.VolumeDetachTimeout, &out.VolumeDetachTimeout
+		*out = new(metav1.Duration)
+		**out = **in
+	}
 	if in.NodeDeletionTimeout != nil {
 		in, out := &in.NodeDeletionTimeout, &out.NodeDeletionTimeout
 		*out = new(metav1.Duration)

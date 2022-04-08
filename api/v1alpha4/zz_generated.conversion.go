@@ -1600,6 +1600,7 @@ func autoConvert_v1beta1_MachineSpec_To_v1alpha4_MachineSpec(in *v1beta1.Machine
 	out.ProviderID = (*string)(unsafe.Pointer(in.ProviderID))
 	out.FailureDomain = (*string)(unsafe.Pointer(in.FailureDomain))
 	out.NodeDrainTimeout = (*metav1.Duration)(unsafe.Pointer(in.NodeDrainTimeout))
+	// WARNING: in.VolumeDetachTimeout requires manual conversion: does not exist in peer-type
 	// WARNING: in.NodeDeletionTimeout requires manual conversion: does not exist in peer-type
 	return nil
 }

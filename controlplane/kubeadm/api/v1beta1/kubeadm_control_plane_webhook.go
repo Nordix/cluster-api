@@ -155,6 +155,7 @@ func (in *KubeadmControlPlane) ValidateUpdate(old runtime.Object) error {
 		{spec, "machineTemplate", "infrastructureRef", "name"},
 		{spec, "machineTemplate", "infrastructureRef", "kind"},
 		{spec, "machineTemplate", "nodeDrainTimeout"},
+		{spec, "machineTemplate", "volumeDetachTimeout"},
 		{spec, "machineTemplate", "nodeDeletionTimeout"},
 		{spec, "replicas"},
 		{spec, "version"},

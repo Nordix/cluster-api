@@ -335,20 +335,25 @@ func (r *Reconciler) reconcileDelete(ctx context.Context, cluster *clusterv1.Clu
 			conditions.MarkTrue(m, clusterv1.DrainingSucceededCondition)
 			r.recorder.Eventf(m, corev1.EventTypeNormal, "SuccessfulDrainNode", "success draining Machine's node %q", m.Status.NodeRef.Name)
 
-			// After node draining, make sure volumes are detached before deleting the Node.
-			if conditions.Get(m, clusterv1.VolumeDetachSucceededCondition) == nil {
-				conditions.MarkFalse(m, clusterv1.VolumeDetachSucceededCondition, clusterv1.WaitingForVolumeDetachReason, clusterv1.ConditionSeverityInfo, "Waiting for node volumes to be detached")
+			// After node draining, make sure either volumes are detached or left alone after volume detach timeout
+			// exceeded before deleting the Node.
+			if conditions.Get(m, clusterv1.VolumeDetachFinishedCondition) == nil {
+				conditions.MarkFalse(m, clusterv1.VolumeDetachFinishedCondition, clusterv1.WaitingForVolumeDetachReason, clusterv1.ConditionSeverityInfo, "Waiting for node volumes to be detached")
 			}
-			if ok, err := r.shouldWaitForNodeVolumes(ctx, cluster, m.Status.NodeRef.Name, m.Name); ok || err != nil {
+			if r.nodeDrainTimeoutExceeded(m) || r.volumeDetachTimeoutExceeded(m) {
+				conditions.MarkTrue(m, clusterv1.VolumeDetachFinishedCondition)
+				r.recorder.Eventf(m, corev1.EventTypeNormal, "NodeVolumeUndetached", "node volumes detach timeout exceeded for Machine's node %q, moving on with node deletion", m.Status.NodeRef.Name)
+			} else if ok, err := r.shouldWaitForNodeVolumes(ctx, cluster, m.Status.NodeRef.Name, m.Name); ok || err != nil {
 				if err != nil {
 					r.recorder.Eventf(m, corev1.EventTypeWarning, "FailedWaitForVolumeDetach", "error wait for volume detach, node %q: %v", m.Status.NodeRef.Name, err)
 					return ctrl.Result{}, err
 				}
 				log.Info("Waiting for node volumes to be detached", "node", m.Status.NodeRef.Name)
 				return ctrl.Result{}, nil
+			} else {
+				conditions.MarkTrue(m, clusterv1.VolumeDetachFinishedCondition)
+				r.recorder.Eventf(m, corev1.EventTypeNormal, "NodeVolumesDetached", "success waiting for node volumes detach Machine's node %q", m.Status.NodeRef.Name)
 			}
-			conditions.MarkTrue(m, clusterv1.VolumeDetachSucceededCondition)
-			r.recorder.Eventf(m, corev1.EventTypeNormal, "NodeVolumesDetached", "success waiting for node volumes detach Machine's node %q", m.Status.NodeRef.Name)
 		}
 	}
 
@@ -423,7 +428,7 @@ func (r *Reconciler) isNodeDrainAllowed(m *clusterv1.Machine) bool {
 }
 
 func (r *Reconciler) nodeDrainTimeoutExceeded(machine *clusterv1.Machine) bool {
-	// if the NodeDrainTineout type is not set by user
+	// if the NodeDrainTimeout type is not set by user
 	if machine.Spec.NodeDrainTimeout == nil || machine.Spec.NodeDrainTimeout.Seconds() <= 0 {
 		return false
 	}
@@ -437,6 +442,23 @@ func (r *Reconciler) nodeDrainTimeoutExceeded(machine *clusterv1.Machine) bool {
 	firstTimeDrain := conditions.GetLastTransitionTime(machine, clusterv1.DrainingSucceededCondition)
 	diff := now.Sub(firstTimeDrain.Time)
 	return diff.Seconds() >= machine.Spec.NodeDrainTimeout.Seconds()
+}
+
+func (r *Reconciler) volumeDetachTimeoutExceeded(machine *clusterv1.Machine) bool {
+	// if the VolumeDetachTimeout type is not set by user
+	if machine.Spec.VolumeDetachTimeout == nil || machine.Spec.VolumeDetachTimeout.Seconds() <= 0 {
+		return false
+	}
+
+	// if the volume detaching finished condition does not exist
+	if conditions.Get(machine, clusterv1.VolumeDetachFinishedCondition) == nil {
+		return false
+	}
+
+	now := time.Now()
+	firstTimeDetach := conditions.GetLastTransitionTime(machine, clusterv1.VolumeDetachFinishedCondition)
+	diff := now.Sub(firstTimeDetach.Time)
+	return diff.Seconds() >= machine.Spec.VolumeDetachTimeout.Seconds()
 }
 
 // isDeleteNodeAllowed returns nil only if the Machine's NodeRef is not nil
