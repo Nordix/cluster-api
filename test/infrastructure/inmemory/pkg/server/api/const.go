@@ -317,4 +317,23 @@ var (
 			},
 		},
 	}
-)
+	coordinationV1APIResourceList = &metav1.APIResourceList{
+		GroupVersion: "coordination.k8s.io/v1",
+		APIResources: []metav1.APIResource{
+			{
+				Name:         "leases",
+				SingularName: "lease",
+				Namespaced:   true,
+				Kind:         "Lease",
+				Verbs: []string{
+					"create",
+					"delete",
+					"get",
+					"list",
+					"update",
+					"watch",
+				},
+				StorageVersionHash: "",
+			},
+		},
+	}

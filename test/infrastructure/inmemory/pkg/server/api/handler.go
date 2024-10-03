@@ -667,6 +667,9 @@ func getAPIResourceList(req *restful.Request) *metav1.APIResourceList {
 		if req.PathParameter("group") == "apps" && req.PathParameter("version") == "v1" {
 			return appsV1ResourceList
 		}
+		if req.PathParameter("group") == "coordination.k8s.io" && req.PathParameter("version") == "v1" {
+			return coordinationV1APIResourceList
+		}
 		return nil
 	}
 	return corev1APIResourceList
