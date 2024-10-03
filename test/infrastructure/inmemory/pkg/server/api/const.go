@@ -194,6 +194,19 @@ var (
 					Version:      "v1",
 				},
 			},
+			{
+				Name: "coordination.k8s.io",
+				Versions: []metav1.GroupVersionForDiscovery{
+					{
+						GroupVersion: "coordination.k8s.io/v1",
+						Version:      "v1",
+					},
+				},
+				PreferredVersion: metav1.GroupVersionForDiscovery{
+					GroupVersion: "coordination.k8s.io/v1",
+					Version:      "v1",
+				},
+			},
 		},
 	}
 
@@ -312,6 +325,27 @@ var (
 				},
 				ShortNames: []string{
 					"deploy",
+				},
+				StorageVersionHash: "",
+			},
+		},
+	}
+	coordinationV1APIResourceList = &metav1.APIResourceList{
+		GroupVersion: "coordination.k8s.io/v1",
+		APIResources: []metav1.APIResource{
+			{
+				Name:         "leases",
+				SingularName: "lease",
+				Namespaced:   true,
+				Kind:         "Lease",
+				Verbs: []string{
+					"create",
+					"delete",
+					"get",
+					"list",
+					"update",
+					"patch",
+					"watch",
 				},
 				StorageVersionHash: "",
 			},
