@@ -140,7 +140,7 @@ func (h *apiServerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *apiServerHandler) globalLogging(req *restful.Request, resp *restful.Response, chain *restful.FilterChain) {
-	h.log.V(4).Info("Serving", "method", req.Request.Method, "url", req.Request.URL, "contentType", req.HeaderParameter("Content-Type"))
+	h.log.Info("Received request", "method", req.Request.Method, "url", req.Request.URL, "contentType", req.HeaderParameter("Content-Type"), "body", req.Request.Body)
 
 	start := time.Now()
 
@@ -169,6 +169,7 @@ func (h *apiServerHandler) globalLogging(req *restful.Request, resp *restful.Res
 
 		requestTotal.WithLabelValues(requestTotalLabelValues...).Inc()
 		requestLatency.WithLabelValues(requestLatencyLabelValues...).Observe(time.Since(start).Seconds())
+		h.log.Info("Completed request", "method", req.Request.Method, "url", req.Request.URL, "status", resp.StatusCode())
 	}()
 
 	chain.ProcessFilter(req, resp)
@@ -193,6 +194,7 @@ func cleanDryRun(u *url.URL) string {
 }
 
 func (h *apiServerHandler) apiDiscovery(_ *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiDiscovery")
 	if err := resp.WriteEntity(apiVersions); err != nil {
 		_ = resp.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
@@ -200,6 +202,7 @@ func (h *apiServerHandler) apiDiscovery(_ *restful.Request, resp *restful.Respon
 }
 
 func (h *apiServerHandler) apiV1Discovery(_ *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Discovery")
 	if err := resp.WriteEntity(corev1APIResourceList); err != nil {
 		_ = resp.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
@@ -207,6 +210,7 @@ func (h *apiServerHandler) apiV1Discovery(_ *restful.Request, resp *restful.Resp
 }
 
 func (h *apiServerHandler) apisDiscovery(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apisDiscovery")
 	if req.PathParameter("group") != "" {
 		if req.PathParameter("group") == "rbac.authorization.k8s.io" && req.PathParameter("version") == "v1" {
 			if err := resp.WriteEntity(rbacv1APIResourceList); err != nil {
@@ -241,6 +245,7 @@ func (h *apiServerHandler) apisDiscovery(req *restful.Request, resp *restful.Res
 }
 
 func (h *apiServerHandler) apiV1Create(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Create")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
@@ -296,6 +301,7 @@ func (h *apiServerHandler) apiV1Create(req *restful.Request, resp *restful.Respo
 }
 
 func (h *apiServerHandler) apiV1List(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1List")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
@@ -358,6 +364,7 @@ func (h *apiServerHandler) apiV1List(req *restful.Request, resp *restful.Respons
 }
 
 func (h *apiServerHandler) apiV1Watch(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Watch")
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
 	resourceGroup, err := h.resourceGroupResolver(req.Request.Host)
 	if err != nil {
@@ -381,10 +388,12 @@ func (h *apiServerHandler) apiV1Watch(req *restful.Request, resp *restful.Respon
 }
 
 func (h *apiServerHandler) apiV1Get(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Get")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
 	resourceGroup, err := h.resourceGroupResolver(req.Request.Host)
+	h.log.Info("group", "resourceGroup", resourceGroup)
 	if err != nil {
 		_ = resp.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
@@ -395,6 +404,8 @@ func (h *apiServerHandler) apiV1Get(req *restful.Request, resp *restful.Response
 
 	// Maps the requested resource to a gvk.
 	gvk, err := requestToGVK(req)
+	h.log.Info("GVK", "Kind:", gvk.Kind)
+
 	if err != nil {
 		_ = resp.WriteErrorString(http.StatusInternalServerError, err.Error())
 		return
@@ -422,6 +433,7 @@ func (h *apiServerHandler) apiV1Get(req *restful.Request, resp *restful.Response
 }
 
 func (h *apiServerHandler) apiV1Update(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Update")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
@@ -477,6 +489,7 @@ func (h *apiServerHandler) apiV1Update(req *restful.Request, resp *restful.Respo
 }
 
 func (h *apiServerHandler) apiV1Patch(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Patch")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
@@ -530,6 +543,7 @@ func (h *apiServerHandler) apiV1Patch(req *restful.Request, resp *restful.Respon
 }
 
 func (h *apiServerHandler) apiV1Delete(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1Delete")
 	ctx := req.Request.Context()
 
 	// Gets the resource group the request targets (the resolver is aware of the mapping host<->resourceGroup)
@@ -567,6 +581,7 @@ func (h *apiServerHandler) apiV1Delete(req *restful.Request, resp *restful.Respo
 }
 
 func (h *apiServerHandler) apiV1PortForward(req *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with apiV1PortForward")
 	// In order to handle a port forward request the current connection has to be upgraded
 	// to become compliant with the SPDY protocol.
 	// This implies two steps:
@@ -643,6 +658,7 @@ func (h *apiServerHandler) doPortForward(ctx context.Context, address string, st
 }
 
 func (h *apiServerHandler) healthz(_ *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with healthz")
 	resp.WriteHeader(http.StatusOK)
 }
 
