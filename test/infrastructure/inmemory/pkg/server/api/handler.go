@@ -77,6 +77,10 @@ func NewAPIServerHandler(manager inmemoryruntime.Manager, log logr.Logger, resol
 
 	// Health check
 	ws.Route(ws.GET("/").To(apiServer.healthz))
+	ws.Route(ws.GET("/healthz").To(apiServer.healthzOK))
+	ws.Route(ws.GET("/readyz").To(apiServer.healthzOK))
+	ws.Route(ws.GET("/livez").To(apiServer.healthzOK))
+	ws.Route(ws.GET("/version").To(apiServer.healthzOK))
 
 	// Discovery endpoints
 	ws.Route(ws.GET("/api").To(apiServer.apiDiscovery))
@@ -660,6 +664,14 @@ func (h *apiServerHandler) doPortForward(ctx context.Context, address string, st
 func (h *apiServerHandler) healthz(_ *restful.Request, resp *restful.Response) {
 	h.log.Info("Handling request with healthz")
 	resp.WriteHeader(http.StatusOK)
+}
+
+func (h *apiServerHandler) healthzOK(_ *restful.Request, resp *restful.Response) {
+	h.log.Info("Handling request with healthzOK")
+	if err := resp.WriteEntity("ok"); err != nil {
+		_ = resp.WriteErrorString(http.StatusInternalServerError, err.Error())
+		return
+	}
 }
 
 func requestToGVK(req *restful.Request) (*schema.GroupVersionKind, error) {
