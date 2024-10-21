@@ -60,8 +60,8 @@ const (
 	scaleClusterNamespacePlaceholder = "scale-cluster-namespace-placeholder"
 )
 
-// scaleSpecInput is the input for scaleSpec.
-type scaleSpecInput struct {
+// ScaleSpecInput is the input for ScaleSpec.
+type ScaleSpecInput struct {
 	E2EConfig             *clusterctl.E2EConfig
 	ClusterctlConfigPath  string
 	BootstrapClusterProxy framework.ClusterProxy
@@ -119,6 +119,10 @@ type scaleSpecInput struct {
 	// If not specified, this is a no-op.
 	PostNamespaceCreated func(managementClusterProxy framework.ClusterProxy, workloadClusterNamespace string)
 
+	// Allows to inject a function to be run after test workload cluster name and namespace are generated.
+	// If not specified, this is a no-op.
+	PostScaleClusterNamespaceCreated func(clusterProxy framework.ClusterProxy, clusterNamespace string, clusterName string, clusterTemplateYAML []byte) (template []byte)
+
 	// FailFast if set to true will return immediately after the first cluster operation fails.
 	// If set to false, the test suite will not exit immediately after the first cluster operation fails.
 	// Example: When creating clusters from c1 to c20 consider c6 fails creation. If FailFast is set to true
@@ -141,11 +145,11 @@ type scaleSpecInput struct {
 	SkipWaitForCreation bool
 }
 
-// scaleSpec implements a scale test for clusters with MachineDeployments.
-func scaleSpec(ctx context.Context, inputGetter func() scaleSpecInput) {
+// ScaleSpec implements a scale test for clusters with MachineDeployments.
+func ScaleSpec(ctx context.Context, inputGetter func() ScaleSpecInput) {
 	var (
 		specName      = "scale"
-		input         scaleSpecInput
+		input         ScaleSpecInput
 		namespace     *corev1.Namespace
 		cancelWatches context.CancelFunc
 	)
@@ -250,9 +254,7 @@ func scaleSpec(ctx context.Context, inputGetter func() scaleSpecInput) {
 			Expect(err).NotTo(HaveOccurred(), "%q value should be integer", scaleConcurrency)
 		}
 
-		// TODO(ykakarap): Follow-up: Add support for legacy cluster templates.
-
-		By("Create the ClusterClass to be used by all workload clusters")
+		By("Create the cluster template to be used by all workload clusters")
 
 		// IMPORTANT: ConfigCluster function in the test framework is currently not concurrency safe.
 		// Therefore, it is not advised to call this functions across all the concurrency workers.
@@ -271,32 +273,36 @@ func scaleSpec(ctx context.Context, inputGetter func() scaleSpecInput) {
 			WorkerMachineCount:       workerMachineCount,
 		})
 		Expect(baseWorkloadClusterTemplate).ToNot(BeNil(), "Failed to get the cluster template")
+		baseClusterClassYAML := []byte{}
+		baseClusterTemplateYAML := baseWorkloadClusterTemplate
 
-		// Separate the Cluster YAML and the ClusterClass YAML so that we can apply the ClusterCLass ahead of time
-		// to avoid race conditions while applying the ClusterClass when trying to create multiple clusters concurrently.
-		// Nb. Apply function in the test framework uses `kubectl apply` internally. `kubectl apply` detects
-		// if the resource has to be created or updated before actually executing the operation. If another worker changes
-		// the status of the cluster during this timeframe the operation will fail.
-		log.Logf("Extract ClusterClass and Cluster from template YAML")
-		baseClusterClassYAML, baseClusterTemplateYAML := extractClusterClassAndClusterFromTemplate(baseWorkloadClusterTemplate)
+		if isClusterClass(baseWorkloadClusterTemplate) {
+			// Separate the Cluster YAML and the ClusterClass YAML so that we can apply the ClusterCLass ahead of time
+			// to avoid race conditions while applying the ClusterClass when trying to create multiple clusters concurrently.
+			// Nb. Apply function in the test framework uses `kubectl apply` internally. `kubectl apply` detects
+			// if the resource has to be created or updated before actually executing the operation. If another worker changes
+			// the status of the cluster during this timeframe the operation will fail.
+			log.Logf("Extract ClusterClass and Cluster from template YAML")
+			// TODO(mboukhalfa) not sure if this will work with the legacy clustertemplate
+			// if it works then we can keep else we should first check if the test is running with clustercluss to run this
+			baseClusterClassYAML, baseClusterTemplateYAML = extractClusterClassAndClusterFromTemplate(baseWorkloadClusterTemplate)
+			// Modify the baseClusterTemplateYAML so that it has the desired number of machine deployments.
+			baseClusterTemplateYAML = modifyMachineDeployments(baseClusterTemplateYAML, int(*machineDeploymentCount))
 
-		// Modify the baseClusterTemplateYAML so that it has the desired number of machine deployments.
-		baseClusterTemplateYAML = modifyMachineDeployments(baseClusterTemplateYAML, int(*machineDeploymentCount))
-
-		// If all clusters should be deployed in the same namespace (namespace.Name),
-		// then deploy the ClusterClass in this namespace.
-		if !input.DeployClusterInSeparateNamespaces {
-			if len(baseClusterClassYAML) > 0 {
-				clusterClassYAML := bytes.Replace(baseClusterClassYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespace.Name), -1)
-				log.Logf("Apply ClusterClass")
-				Eventually(func() error {
-					return input.BootstrapClusterProxy.CreateOrUpdate(ctx, clusterClassYAML)
-				}, 1*time.Minute).Should(Succeed())
-			} else {
-				log.Logf("ClusterClass already exists. Skipping creation.")
+			// If all clusters should be deployed in the same namespace (namespace.Name),
+			// then deploy the ClusterClass in this namespace.
+			if !input.DeployClusterInSeparateNamespaces {
+				if len(baseClusterClassYAML) > 0 {
+					clusterClassYAML := bytes.Replace(baseClusterClassYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespace.Name), -1)
+					log.Logf("Apply ClusterClass")
+					Eventually(func() error {
+						return input.BootstrapClusterProxy.CreateOrUpdate(ctx, clusterClassYAML)
+					}, 1*time.Minute).Should(Succeed())
+				} else {
+					log.Logf("ClusterClass already exists. Skipping creation.")
+				}
 			}
 		}
-
 		By("Create workload clusters concurrently")
 		// Create multiple clusters concurrently from the same base cluster template.
 
@@ -331,7 +337,7 @@ func scaleSpec(ctx context.Context, inputGetter func() scaleSpecInput) {
 			Concurrency:  concurrency,
 			FailFast:     input.FailFast,
 			WorkerFunc: func(ctx context.Context, inputChan chan string, resultChan chan workResult, wg *sync.WaitGroup) {
-				createClusterWorker(ctx, input.BootstrapClusterProxy, inputChan, resultChan, wg, namespace.Name, input.DeployClusterInSeparateNamespaces, baseClusterClassYAML, baseClusterTemplateYAML, creator)
+				createClusterWorker(ctx, input.BootstrapClusterProxy, inputChan, resultChan, wg, namespace.Name, input.DeployClusterInSeparateNamespaces, baseClusterClassYAML, baseClusterTemplateYAML, creator, input.PostScaleClusterNamespaceCreated)
 			},
 		})
 		if err != nil {
@@ -568,7 +574,9 @@ func getClusterCreateFn(clusterProxy framework.ClusterProxy) clusterCreator {
 	}
 }
 
-func createClusterWorker(ctx context.Context, clusterProxy framework.ClusterProxy, inputChan <-chan string, resultChan chan<- workResult, wg *sync.WaitGroup, defaultNamespace string, deployClusterInSeparateNamespaces bool, baseClusterClassYAML, baseClusterTemplateYAML []byte, create clusterCreator) {
+type PreClusterCreateCallback func(clusterProxy framework.ClusterProxy, clusterNamespace string, clusterName string, clusterTemplateYAML []byte) (template []byte)
+
+func createClusterWorker(ctx context.Context, clusterProxy framework.ClusterProxy, inputChan <-chan string, resultChan chan<- workResult, wg *sync.WaitGroup, defaultNamespace string, deployClusterInSeparateNamespaces bool, baseClusterClassYAML, baseClusterTemplateYAML []byte, create clusterCreator, PostNamespaceCreated PreClusterCreateCallback) {
 	defer wg.Done()
 
 	for {
@@ -612,16 +620,22 @@ func createClusterWorker(ctx context.Context, clusterProxy framework.ClusterProx
 						Name:                namespaceName,
 						IgnoreAlreadyExists: true,
 					}, "40s", "10s")
-
-					log.Logf("Apply ClusterClass in namespace %", namespaceName)
-					clusterClassYAML := bytes.Replace(baseClusterClassYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespaceName), -1)
-					Eventually(func() error {
-						return clusterProxy.CreateOrUpdate(ctx, clusterClassYAML)
-					}, 1*time.Minute).Should(Succeed())
+					if isClusterClass(baseClusterTemplateYAML) {
+						log.Logf("Apply ClusterClass in namespace %", namespaceName)
+						clusterClassYAML := bytes.Replace(baseClusterClassYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespaceName), -1)
+						Eventually(func() error {
+							return clusterProxy.CreateOrUpdate(ctx, clusterClassYAML)
+						}, 1*time.Minute).Should(Succeed())
+					}
 				}
-
+				// how I can ensure that this function is concurency safe
+				hookClusterTemplateYAML := baseClusterTemplateYAML
+				if PostNamespaceCreated != nil {
+					log.Logf("Calling PostNamespaceCreated for namespace %s", namespaceName)
+					hookClusterTemplateYAML = PostNamespaceCreated(clusterProxy, namespaceName, clusterName, baseClusterTemplateYAML)
+				}
 				// Adjust namespace and name in Cluster YAML
-				clusterTemplateYAML := bytes.Replace(baseClusterTemplateYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespaceName), -1)
+				clusterTemplateYAML := bytes.Replace(hookClusterTemplateYAML, []byte(scaleClusterNamespacePlaceholder), []byte(namespaceName), -1)
 				clusterTemplateYAML = bytes.Replace(clusterTemplateYAML, []byte(scaleClusterNamePlaceholder), []byte(clusterName), -1)
 
 				// Deploy Cluster.
@@ -808,6 +822,19 @@ func getClusterResourcesForUpgrade(ctx context.Context, c client.Client, namespa
 type workResult struct {
 	clusterName string
 	err         any
+}
+
+func isClusterClass(baseClusterTemplateYAML []byte) bool {
+	objs, err := yaml.ToUnstructured(baseClusterTemplateYAML)
+	Expect(err).ToNot(HaveOccurred())
+	Expect(objs).To(HaveLen(1), "Unexpected number of objects found in baseClusterTemplateYAML")
+
+	scheme := runtime.NewScheme()
+	framework.TryAddDefaultSchemes(scheme)
+	cluster := &clusterv1.Cluster{}
+	Expect(scheme.Convert(&objs[0], cluster, nil)).Should(Succeed())
+	// Verify the Cluster Topology.
+	return cluster.Spec.Topology != nil
 }
 
 func modifyMachineDeployments(baseClusterTemplateYAML []byte, count int) []byte {
